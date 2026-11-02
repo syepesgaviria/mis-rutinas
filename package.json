@@ -1,0 +1,15 @@
+{
+  "name": "mis-rutinas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Planificador semanal de rutinas de ejercicio. App web instalable (PWA) con datos locales.",
+  "scripts": {
+    "build": "node tools/build-sw.js",
+    "servir": "node tools/servir.js 8765 /mis-rutinas",
+    "test": "node tests/runtime.test.js",
+    "e2e": "node tests/e2e.js"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.7"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+tests/salida/
+*.log
+.DS_Store
+# datos personales: nunca van al repositorio
+semilla/
+*.respaldo.json
+mis-rutinas-20*.json
