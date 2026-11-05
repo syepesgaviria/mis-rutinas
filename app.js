@@ -1267,18 +1267,30 @@ function renderToast(){ var o = document.querySelector('.toast'); if (o) o.remov
 function vBottomnav(){ return '<nav class="bottomnav" aria-label="Secciones"><div class="inner">' + TABS.map(function(t){ return '<button type="button" class="tabbtn" data-a="tab" data-t="' + t.id + '"' + (S.tab === t.id ? ' aria-current="page"' : '') + '>' + ic(t.icon, 22) + '<span>' + t.label + '</span></button>'; }).join('') + '</div></nav>'; }
 function vTopnav(){ return '<header class="topnav"><span class="brand">Mis rutinas</span><nav class="tabs" aria-label="Secciones">' + TABS.map(function(t){ return '<button type="button" data-a="tab" data-t="' + t.id + '"' + (S.tab === t.id ? ' aria-current="page"' : '') + '>' + t.label + '</button>'; }).join('') + '</nav><span class="savestate" data-live="save" aria-live="polite">' + saveText() + '</span></header>'; }
 function topbar(back, title){ return '<header class="topbar"><button type="button" class="back" data-a="back">' + ic('left', 20, 2) + '<span>' + esc(back) + '</span></button><h1 tabindex="-1" data-focus>' + esc(title) + '</h1><span></span></header>'; }
-function statHtml(v, l){ return '<div class="stat"><b>' + v + '</b><small>' + l + '</small></div>'; }
+/* lo hecho en la semana: días con algo anotado (los mismos que muestran "Hecho"), series con repeticiones anotadas,
+   volumen (kg × reps) y el cardio de esos días, porque el cardio no tiene registro propio */
+function doneStats(w){
+  var by = {}; GROUPS.forEach(function(g){ by[g] = 0; });
+  var r = { by: by, sets: 0, vol: 0, min: 0, days: 0, hecho: {} };
+  w.days.forEach(function(d, i){
+    if (d.rest || !d.items.some(hasLog)) return;
+    r.days++; r.hecho[i] = true;
+    d.items.forEach(function(it){ var ex = exById(it.ex); if (ex.t === 'cardio') { r.min += num(it.min); return; } var n = logSets(it).length; r.sets += n; r.vol += itemVol(it); if (by[ex.g] != null) by[ex.g] += n; });
+  });
+  return r;
+}
+function statHtml(v, l, of){ return '<div class="stat"><b>' + v + (of != null ? '<span class="of">/' + of + '</span>' : '') + '</b><small>' + l + '</small></div>'; }
 
 /* SEMANA */
 function vSemana(){
   var ws = S.ws, w = S.weeks[ws], desk = DESK.matches, wk = isoWeek(parseIso(ws)), rel = relLabel(ws);
-  var st = w ? weekStats(w) : null;
+  var st = w ? weekStats(w) : null, dn = w ? doneStats(w) : null;
   var h = '<div class="weekhead">' + (desk ? '' : '<div class="whtop"><span class="eyebrow">Mis rutinas</span><button type="button" class="linkbtn histbtn" data-a="open-hist">' + ic('hist', 18) + 'Historial</button></div>') + '<div class="weeknav">' +
     '<button type="button" class="sqbtn" data-a="wk-prev" aria-label="Semana anterior">' + ic('left', 20, 2) + '</button>' +
     '<div class="weektitle"><h1>' + weekLabel(ws) + '</h1><span class="weeksub">Semana ' + wk.w + ' · ' + wk.y + (rel ? ' <span class="pill accent">' + rel + '</span>' : '') +
     (ws !== curMonday() && rel !== 'Próxima semana' ? ' <button type="button" class="linkbtn sm" data-a="wk-today">Ir a esta semana</button>' : '') + '</span></div>' +
     '<button type="button" class="sqbtn" data-a="wk-next" aria-label="Semana siguiente">' + ic('right', 20, 2) + '</button></div>' +
-    (desk && w ? '<div class="deskstats">' + statHtml(st.fuerzaDays, 'días de fuerza') + statHtml(st.sets, 'series') + statHtml(fmtNum(st.min), 'min de cardio') + '</div>' : '') +
+    (desk && w ? '<div class="deskstats">' + statHtml(dn.days, 'días de fuerza', st.fuerzaDays) + statHtml(dn.sets, 'series', st.sets) + statHtml(fmtNum(dn.min), 'min de cardio', fmtNum(st.min)) + '</div>' : '') +
     (desk ? '<button type="button" class="btn deskhist" data-a="open-hist">' + ic('hist', 18) + 'Historial</button>' : '') +
     '</div>' + vAvisoPeso() + (S.local ? '<p class="localnote">Tus datos se guardan solo en este navegador.</p>' : '') + vAvisoRespaldo() + vAislados() + offBanner() + pendSlot() + migBanner(ws);
   if (!w) {
@@ -1288,8 +1300,9 @@ function vSemana(){
     if (weekLocked(ws)) return h + '<div class="card"><p class="hint">Esta semana tiene datos guardados que la app no reconoce. Se conservan sin cambios y no se pueden editar desde aquí; el detalle está en el aviso de arriba.</p></div>';
     return h + vEmptyWeek();
   }
-  if (desk) return h + '<div class="weekrows">' + w.days.map(function(d, i){ return vRow(d, i); }).join('') + '</div>' + vDeskSummary(w, st) + weekFoot();
-  return h + '<div class="strip">' + statHtml(st.fuerzaDays, 'días fuerza') + statHtml(st.sets, 'series') + statHtml(fmtNum(st.min), 'min cardio') +
+  if (desk) return h + '<div class="weekrows">' + w.days.map(function(d, i){ return vRow(d, i); }).join('') + '</div>' + vDeskSummary(st, dn) + weekFoot();
+  /* la franja cuenta lo hecho sobre lo planeado: 13/74 series */
+  return h + '<div class="strip">' + statHtml(dn.days, 'días', st.fuerzaDays) + statHtml(dn.sets, 'series', st.sets) + statHtml(fmtNum(dn.min), 'min cardio', fmtNum(st.min)) +
     '<button type="button" class="linkbtn" data-a="open-resumen">Resumen' + ic('right', 16, 2) + '</button></div>' +
     '<div class="daylist">' + w.days.map(function(d, i){ return vDayCard(d, i); }).join('') + '</div>' + weekFoot();
 }
@@ -1352,28 +1365,43 @@ function weekFoot(){
   if (S.confirm === 'clearweek') return '<div class="confirm" style="margin-top:14px"><p>Se borra todo el plan de ' + weekLabel(S.ws) + '. No se puede deshacer.</p><div class="row2"><button type="button" class="btn btn-danger-solid" data-a="clearweek-ok">Borrar plan</button><button type="button" class="btn" data-a="cancel">Cancelar</button></div></div>';
   return '<div class="weekfoot"><button type="button" class="linkbtn danger" data-a="clearweek">Borrar plan de esta semana</button></div>';
 }
-function barsHtml(st, two){
-  var max = 1; GROUPS.forEach(function(g){ if (st.by[g] > max) max = st.by[g]; });
-  return '<div class="bars' + (two ? ' two' : '') + '">' + GROUPS.map(function(g){ var v = st.by[g]; var pct = Math.round(v / max * 100); return '<div class="bar' + (v ? '' : ' zero') + '" title="' + g + ': ' + v + ' series"><span>' + g + '</span><span class="track">' + (v ? '<span class="fillbar" style="width:' + pct + '%"></span>' : '') + '</span><b>' + v + '</b></div>'; }).join('') + '</div>';
+/* series por grupo: lo hecho en el color de acento sobre lo planeado en tono claro, las dos a la misma escala */
+function barsHtml(dn, st, two){
+  var max = 1; GROUPS.forEach(function(g){ max = Math.max(max, st.by[g], dn.by[g]); });
+  return '<div class="bars' + (two ? ' two' : '') + '">' + GROUPS.map(function(g){
+    var v = dn.by[g], p = st.by[g];
+    return '<div class="bar' + (v || p ? '' : ' zero') + '" title="' + g + ': ' + v + ' de ' + p + ' series"><span>' + g + '</span><span class="track">' +
+      (p ? '<span class="planbar" style="width:' + Math.round(p / max * 100) + '%"></span>' : '') +
+      (v ? '<span class="fillbar" style="width:' + Math.round(v / max * 100) + '%"></span>' : '') +
+      '</span><b>' + v + '<small>/' + p + '</small></b></div>';
+  }).join('') + '</div>';
 }
-function cardioHtml(st){
-  var rows = st.cardio.map(function(c){ return '<div class="cardiorow"><span class="cl"><span>' + esc(c.ex.n) + '</span><small>' + esc([DAYS[c.i], c.it.km ? c.it.km + ' km' : '', c.it.zona || ''].filter(Boolean).join(' · ')) + '</small></span><b>' + fmtNum(num(c.it.min)) + ' min</b></div>'; }).join('');
-  return '<div class="panelhead"><h2>Cardio</h2><b>' + fmtNum(st.min) + ' min</b></div>' + (rows || '<p class="subnote">Sin cardio esta semana.</p>');
+function cardioHtml(dn, st){
+  var rows = st.cardio.map(function(c){
+    var ok = !!dn.hecho[c.i];
+    return '<div class="cardiorow' + (ok ? '' : ' pend') + '"><span class="cl"><span class="cn">' + esc(c.ex.n) + (ok ? '<span class="pill good">Hecho</span>' : '') + '</span><small>' + esc([DAYS[c.i], c.it.km ? c.it.km + ' km' : '', c.it.zona || ''].filter(Boolean).join(' · ')) + '</small></span><b>' + fmtNum(num(c.it.min)) + ' min</b></div>';
+  }).join('');
+  return '<div class="panelhead"><h2>Cardio</h2><b>' + fmtNum(dn.min) + ' de ' + fmtNum(st.min) + ' min</b></div>' +
+    (rows ? rows + '<p class="subnote">El cardio cuenta como hecho en los días con series anotadas.</p>' : '<p class="subnote">Sin cardio esta semana.</p>');
 }
-function prevLine(){ var pw = S.weeks[shiftWeek(S.ws, -1)]; if (!pw || !hasContent(pw)) return ''; var ps = weekStats(pw); return '<p class="subnote">Semana anterior: ' + ps.sets + ' series · ' + fmtNum(ps.min) + ' min de cardio.</p>'; }
-function vDeskSummary(w, st){
-  return '<div class="desksum"><section class="panel span2"><div class="panelhead"><h2>Series por grupo muscular</h2><span>Cuenta el músculo principal de cada ejercicio</span></div>' + barsHtml(st, true) + '</section><section class="panel">' + cardioHtml(st) + prevLine() + '</section></div>';
+function prevLine(){ var pw = S.weeks[shiftWeek(S.ws, -1)]; if (!pw || !hasContent(pw)) return ''; var pd = doneStats(pw); return '<p class="subnote">Semana anterior: ' + pd.sets + ' series hechas · ' + fmtVol(pd.vol) + ' kg · ' + fmtNum(pd.min) + ' min de cardio.</p>'; }
+function vDeskSummary(st, dn){
+  return '<div class="desksum"><section class="panel span2"><div class="panelhead"><h2>Series por grupo muscular</h2><span>Hechas / plan, por el músculo principal de cada ejercicio</span></div>' + barsHtml(dn, st, true) + '</section><section class="panel">' + cardioHtml(dn, st) + prevLine() + '</section></div>';
 }
 
-/* RESUMEN (celular) */
+/* RESUMEN (celular): lo hecho en la semana, con el plan como referencia */
 function vResumen(){
-  var w = S.weeks[S.ws], st = w ? weekStats(w) : null, pw = S.weeks[shiftWeek(S.ws, -1)], ps = pw && hasContent(pw) ? weekStats(pw) : null, wk = isoWeek(parseIso(S.ws));
-  function kpi(l, v, p){ return '<div class="kpi"><span>' + l + '</span><b>' + v + '</b><small>' + (p != null ? 'Semana anterior: ' + p : 'Sin semana anterior') + '</small></div>'; }
+  var w = S.weeks[S.ws], st = w ? weekStats(w) : null, dn = w ? doneStats(w) : null, pw = S.weeks[shiftWeek(S.ws, -1)], pd = pw && hasContent(pw) ? doneStats(pw) : null, wk = isoWeek(parseIso(S.ws));
+  function kpi(l, v, sub){ return '<div class="kpi"><span>' + l + '</span><b>' + v + '</b><small>' + sub + '</small></div>'; }
   var body = '<div><span class="eyebrow">Semana ' + wk.w + '</span><h2 class="bigtitle">' + weekLabel(S.ws) + '</h2></div>';
   if (!st) body += '<p class="hint">Esta semana todavía no tiene plan.</p>';
-  else body += '<div class="kpis">' + kpi('Series totales', st.sets, ps && ps.sets) + kpi('Días de fuerza', st.fuerzaDays, ps && ps.fuerzaDays) + kpi('Cardio', fmtNum(st.min) + ' min', ps && fmtNum(ps.min) + ' min') + kpi('Descanso', st.restDays + (st.restDays === 1 ? ' día' : ' días'), ps && ps.restDays) + '</div>' +
-    '<section class="panel"><div class="panelhead"><h2>Series por grupo muscular</h2></div>' + barsHtml(st, false) + '<p class="subnote">Cuenta las series del músculo principal de cada ejercicio.</p></section>' +
-    '<section class="panel">' + cardioHtml(st) + '</section>';
+  else body += '<div class="kpis">' +
+      kpi('Días entrenados', dn.days, 'de ' + st.fuerzaDays + (st.fuerzaDays === 1 ? ' planeado' : ' planeados')) +
+      kpi('Series hechas', dn.sets, 'de ' + st.sets + ' planeadas') +
+      kpi('Volumen', fmtVol(dn.vol) + '&nbsp;kg', pd ? 'Semana anterior: ' + fmtVol(pd.vol) + '&nbsp;kg' : 'Sin semana anterior') +
+      kpi('Cardio', fmtNum(dn.min) + ' min', 'de ' + fmtNum(st.min) + ' planeados') + '</div>' +
+    '<section class="panel"><div class="panelhead"><h2>Series por grupo muscular</h2><span>hechas / plan</span></div>' + barsHtml(dn, st, false) + '<p class="subnote">Cuenta las series anotadas del músculo principal de cada ejercicio.</p></section>' +
+    '<section class="panel">' + cardioHtml(dn, st) + '</section>';
   return '<section class="view">' + topbar('Semana', 'Resumen') + '<div class="vbody">' + body + '</div></section>';
 }
 
