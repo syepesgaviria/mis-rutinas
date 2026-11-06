@@ -22,7 +22,7 @@ var DAYS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'
 var DSHORT = ['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'];
 var MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 var MONTHS_LONG = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-var FIELDS = ['sets','reps','kg','rest','min','km','zona','note','g','hk','hr'];
+var FIELDS = ['sets','reps','kg','rest','min','km','zona','note','g','hk','hr','sug'];
 /* límites de entrada: un solo criterio para escribir, guardar, calcular y mostrar */
 var MAX_SETS = 20, MAX_REPS = 999, MAX_KG = 1000;
 /* gramáticas: claves de ítem como las genera uid(); documentos según la ruta de db; fotos como ids de assets */
@@ -343,7 +343,7 @@ function buildOp(key, now){
   if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
-  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); return { op: 'set', body: { orden: nk.orden, dias: nk.dias, updatedAt: now } }; }
+  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; if (nk.descargaCada !== undefined) bk.descargaCada = nk.descargaCada; if (nk.bloque !== undefined) bk.bloque = nk.bloque; return { op: 'set', body: bk }; }
   if (kind === 'f') { var pf = S.perfilDocs[id]; if (!pf) throw new Error('perfil ausente'); return { op: 'set', body: { estatura: pf.estatura, nacimiento: pf.nacimiento || pf._nac0 || '', sexo: pf.sexo === 'M' ? 'M' : 'H', updatedAt: now } }; }
   var c = S.custom[id]; if (!c) throw new Error('ejercicio ausente'); return { op: 'set', body: serCustom(c, now) };
 }
@@ -1318,7 +1318,7 @@ function vDayCard(d, i){
   if (d.rest) return '<button type="button" class="daycard muted" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">Descanso</span>' + today + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
   if (!d.items.length) return '<button type="button" class="daycard muted" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(d.name || 'Sin plan') + '</span>' + today + '</span></span><span class="dcta">Planear</span></button>';
   var cardioOnly = !s.f && s.c;
-  return '<button type="button" class="daycard" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(dayName(d, s)) + '</span>' + (cardioOnly ? '<span class="pill">CARDIO</span>' : '') + (d.items.some(hasLog) ? '<span class="pill good">Hecho</span>' : '') + today + '</span><span class="dmeta">' + esc(dayMeta(d, s)) + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
+  return '<button type="button" class="daycard" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(dayName(d, s)) + '</span>' + (cardioOnly ? '<span class="pill">CARDIO</span>' : '') + (sugCount(d) && !d.items.some(hasLog) ? '<span class="pill accent">' + sugCount(d) + (sugCount(d) === 1 ? ' sube' : ' suben') + '</span>' : '') + (d.items.some(hasLog) ? '<span class="pill good">Hecho</span>' : '') + today + '</span><span class="dmeta">' + esc(dayMeta(d, s)) + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
 }
 function vCol(d, i){
   var date = dayDate(S.ws, i), s = dayStats(d), today = isToday(S.ws, i);
@@ -1474,11 +1474,15 @@ function vExCard(it, o){
     '<button type="button" class="iconbtn" data-a="swap-open" data-k="' + esc(it.k) + '" aria-label="Cambiar ' + esc(ex.n) + ' por otro ejercicio">' + ic('swap', 18) + '</button>' +
     '<button type="button" class="iconbtn" data-a="item-note" data-k="' + esc(it.k) + '" aria-label="' + (noteOpen ? 'Nota' : 'Agregar nota') + '" aria-pressed="' + (noteOpen ? 'true' : 'false') + '">' + ic('pencil', 18) + '</button>' +
     '<button type="button" class="iconbtn" data-a="item-del" data-k="' + esc(it.k) + '" aria-label="Quitar ' + esc(ex.n) + '">' + ic('trash', 18) + '</button></div>' +
-    fields +
+    fields + vSug(it, ex) +
     (noteOpen ? '<div class="note">' + ic('pencil', 16) + '<input id="' + esc(fid(it.k, 'note')) + '" aria-label="Nota de ' + esc(ex.n) + '" data-f="item" data-k="' + esc(it.k) + '" data-p="note" value="' + esc(it.note || '') + '" placeholder="Nota, por ejemplo: pausa de 1 s abajo" autocomplete="off"></div>' : '') +
     (cardio ? '' : o.logDate ? vLog(it, ex, o.logDate, ctx) : o.planDate ? vPlanHint(it, ex, o.planDate) : '') +
     (cardio ? '' : '<p class="err fielderr" id="' + esc(errId(it)) + '" data-log="' + (o.logDate ? '1' : '') + '" aria-live="polite">' + esc(cardErrs(ctx, it, !!o.logDate).join('\n')) + '</p>') +
     '</div>';
+}
+function vSug(it, ex){
+  var g = sugDe(it); if (!g) return '';
+  return '<div class="sugbar"><span>' + ic('trend', 16) + 'Sube de ' + esc(fmtKg(g.de)) + ' a ' + esc(fmtKg(g.a)) + ' kg' + esc(kgSuf(ex)) + ': llegaste al tope la última vez.</span><button type="button" class="linkbtn sm" data-a="sug-undo" data-k="' + esc(it.k) + '">Dejar en ' + esc(fmtKg(g.de)) + '</button></div>';
 }
 function totalsText(c){ var s = dayStats(c); var p = []; if (s.f) p.push(s.sets + ' series'); if (s.c) p.push(fmtNum(s.min) + ' min cardio'); return p.length ? p.join(' · ') : 'Sin ejercicios'; }
 function fMeta(c){ var s = dayStats(c), v = dayVol(c); return s.f + (s.f === 1 ? ' ejercicio' : ' ejercicios') + ' · ' + s.sets + ' series' + (v ? ' · total ' + fmtVol(v) + ' kg' : ''); }
@@ -2045,10 +2049,11 @@ var CICLO_NOMBRES = ['pierna a', 'torso b', 'pierna b', 'torso a'];
 function normNombre(s){ return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
 /* configuración vigente: el documento guardado o, si no hay, un orden deducido de los nombres de los días tipo */
 function cicloCfg(){
-  var doc = S.cicloDocs.principal;
-  if (doc) { var c = window.Ciclo.normalizar(doc); c.orden = c.orden.filter(function(id){ return !!S.tipos[id]; }); return c; }
-  var porNombre = {}; tiposList().forEach(function(t){ var k = normNombre(t.name); if (!porNombre[k]) porNombre[k] = t.id; });
-  return window.Ciclo.normalizar({ orden: CICLO_NOMBRES.map(function(k){ return porNombre[k]; }).filter(Boolean) });
+  var doc = S.cicloDocs.principal, c;
+  if (doc) { c = window.Ciclo.normalizar(doc); c.orden = c.orden.filter(function(id){ return !!S.tipos[id]; }); }
+  else { var porNombre = {}; tiposList().forEach(function(t){ var k = normNombre(t.name); if (!porNombre[k]) porNombre[k] = t.id; }); c = window.Ciclo.normalizar({ orden: CICLO_NOMBRES.map(function(k){ return porNombre[k]; }).filter(Boolean) }); }
+  c.equipo = window.Progresion.normalizarEquipo(c.equipo);
+  return c;
 }
 function cicloEditar(fn){ var c = cicloCfg(); fn(c); S.cicloDocs.principal = c; markKey('k:principal'); render(); }
 function tipoNombre(id){ var t = S.tipos[id]; return t ? (t.name || 'Sin nombre') : 'Día tipo eliminado'; }
@@ -2156,6 +2161,14 @@ function vCicloCfg(){
     var sel = c.dias[n];
     return '<div class="field"><span class="lbl">' + n + ' sesiones</span><div class="chips wrap" role="group">' + DSHORT.map(function(ds, i){ return '<button type="button" class="chip" data-a="cc-dia" data-n="' + n + '" data-i="' + i + '" aria-pressed="' + (sel.indexOf(i) >= 0) + '">' + ds + '</button>'; }).join('') + '</div>' + (sel.length !== n ? '<p class="err">Marca ' + n + ' días (hay ' + sel.length + ').</p>' : '') + '</div>';
   }).join('') + '</div>';
+  var e = c.equipo;
+  function campo(p, lbl, val, modo, ph){ return '<div class="field"><label for="eq-' + p + '">' + lbl + '</label><input id="eq-' + p + '" class="inp" data-f="equipo" data-p="' + p + '" value="' + esc(val) + '" inputmode="' + (modo || 'decimal') + '" placeholder="' + esc(ph || '') + '" autocomplete="off"></div>'; }
+  b += '<div class="sechead"><h2>Equipo y progresión</h2></div><p class="hint small">Cuando en la última sesión llegas al tope del rango en todas las series, el día nuevo trae la siguiente carga que se puede armar con este equipo.</p>' +
+    '<div class="card" style="display:flex;flex-direction:column;gap:12px">' +
+    campo('barra', 'Barra (kg)', fmtKg(e.barra)) + campo('barraEz', 'Barra EZ (kg)', fmtKg(e.barraEz)) +
+    campo('discos', 'Discos disponibles (kg, uno de cada par)', e.discos.map(fmtKg).join(', '), 'text', '5, 6.8, 10, 15.9') +
+    '<p class="hint small" data-live="cargas">Cargas posibles con barra: ' + esc(window.Progresion.cargasBarra(e.barra, e.discos).map(fmtKg).join(', ')) + ' kg.</p>' +
+    campo('pasoMancuerna', 'Paso entre mancuernas (kg)', fmtKg(e.pasoMancuerna)) + campo('mancuernaMax', 'Mancuerna más pesada (kg)', fmtKg(e.mancuernaMax)) + campo('pasoPolea', 'Paso de la polea (kg)', fmtKg(e.pasoPolea)) + '</div>';
   return '<section class="view">' + topbar('Días tipo', 'Ciclo') + '<div class="vbody">' + b + '</div></section>';
 }
 function vProgreso(){
@@ -2438,23 +2451,35 @@ function exLogs(id){
 function lastKgOf(id){ var l = exLogs(id); for (var i = l.length - 1; i >= 0; i--) if (l[i].kgOk != null) return l[i].kgOk; return null; }
 function lastLog(id, before){ var l = exLogs(id).filter(function(x){ return x.date < before; }); return l[l.length - 1] || null; }
 /* incrementos de siempre, aplicados a la modalidad efectiva; sin modalidad, por equipo como antes */
-function nextKg(ex, kg){ var m = cargaDe(ex); if (m === 'dos') return kg + (kg >= 30 ? 5 : 4); if (m === 'una') return kg + (kg >= 15 ? 2.5 : 2); if (m === 'barra' || m === 'corporal') return kg + 2.5; if (m === 'polea') return null; var e = ex.e; if (e === 'Barra' || e === 'Barra EZ') return kg + 2.5; if (e === 'Mancuernas') return kg + (kg >= 15 ? 2.5 : 2); if (e === 'Kettlebell') return kg + 4; if (e === 'Peso corporal') return kg + 2.5; return null; }
+/* modalidad de carga del ejercicio: la del propio (carga) o la deducida del equipo del catálogo */
+function modalidadDe(ex){
+  var m = cargaDe(ex); if (m) return m;
+  var e = ex && ex.e;
+  if (e === 'Barra') return 'barra'; if (e === 'Barra EZ') return 'barraez'; if (e === 'Mancuernas') return PAR[ex.id] ? 'dos' : 'una';
+  if (e === 'Polea' || e === 'Máquina') return 'polea'; if (e === 'Kettlebell') return 'kettlebell'; if (e === 'Peso corporal') return 'corporal';
+  return null;
+}
+/* siguiente carga según el equipo real (discos de la barra, paso de las mancuernas, paso de la polea) */
+function nextKg(ex, kg){ return window.Progresion.siguiente(modalidadDe(ex), kg, cicloCfg().equipo); }
 function logHint(it, ex, date){
   var L = lastLog(it.ex, date);
   if (!L) return hasLog(it) ? '' : '<span>Anota el peso y las repeticiones de cada serie. Si el peso no cambia, deja la casilla vacía y cuenta el de la serie anterior.</span>';
   var s = '<span>Última vez (' + dShort(L.date) + '): ' + esc(L.sets.length ? setsText(L.sets, L.time) + (L.vol ? ' · total ' + fmtVol(L.vol) + ' kg' : '') : (L.kg ? fmtKg(L.kg) + kgUnit(ex) + ' · ' : '') + 'sin repeticiones anotadas') + '</span>';
   var top = topReps(it.reps) || L.top;
   if (!top || !L.reps.length) return s;
-  if (L.time) { var needT = setsN(it) || L.n || L.reps.length, work = L.sets.filter(function(x){ return x.kg === L.kg; }), hitT = L.reps.length >= needT && work.every(function(x){ return x.reps >= top; }); return s + (hitT ? '<span class="up">Llegaste a ' + top + ' s en todas: súbele la dificultad.</span>' : ''); }
   /* T04 (L-01): subir solo si todas las series planeadas (las de esa sesión y las de hoy) están anotadas, con la misma
-     carga, y todas llegan al tope. No se suponen calentamientos: una serie más liviana es parte del registro */
-  var need = Math.max(L.n || 0, setsN(it) || 0) || L.reps.length, w0 = L.sets[0].kg;
-  var full = L.sets.length >= need, uni = L.sets.every(function(x){ return x.kg === w0 && !x.sinKg === !L.sets[0].sinKg; }), reached = L.sets.every(function(x){ return x.reps >= top; });
-  if (!full) return s + '<span>Anotaste ' + L.sets.length + ' de ' + need + ' series: mantén la carga hasta completarlas todas y llegar a ' + top + ' en cada una.</span>';
-  if (!uni) return s + '<span>Las series tuvieron pesos distintos: mantén la carga hasta hacer las ' + need + ' con el mismo peso y llegar a ' + top + ' en todas.</span>';
-  if (!reached) return s + '<span>' + (w0 > 0 ? 'Mantén ' + fmtKg(w0) + kgUnit(ex) + kgSuf(ex) : 'Mantén la carga') + ' hasta llegar a ' + top + ' en todas las series.</span>';
+     carga, y todas llegan al tope. No se suponen calentamientos: una serie más liviana es parte del registro.
+     La evaluación vive en progresion.js y es la misma que usa la propuesta automática al crear el día */
+  var ev = window.Progresion.evaluar(L, top, setsN(it));
+  if (ev.estado === 'sin') return s;
+  if (L.time) return s + (ev.estado === 'sube' ? '<span class="up">Llegaste a ' + top + ' s en todas: súbele la dificultad.</span>' : '');
+  var need = ev.need, w0 = ev.w0;
+  if (ev.estado === 'incompleto') return s + '<span>Anotaste ' + ev.hechas + ' de ' + need + ' series: mantén la carga hasta completarlas todas y llegar a ' + top + ' en cada una.</span>';
+  if (ev.estado === 'distintos') return s + '<span>Las series tuvieron pesos distintos: mantén la carga hasta hacer las ' + need + ' con el mismo peso y llegar a ' + top + ' en todas.</span>';
+  if (ev.estado === 'mantener') return s + '<span>' + (w0 > 0 ? 'Mantén ' + fmtKg(w0) + kgUnit(ex) + kgSuf(ex) : 'Mantén la carga') + ' hasta llegar a ' + top + ' en todas las series.</span>';
   var nx = w0 > 0 ? nextKg(ex, w0) : null, en = ' en todas', m = cargaDe(ex);
   if (nx) return s + '<span class="up">Llegaste a ' + top + en + ': sube a ' + fmtKg(nx) + kgUnit(ex) + kgSuf(ex) + '.</span>' + (num(it.kg) !== nx ? '<button type="button" class="linkbtn sm" data-a="use-kg" data-k="' + esc(it.k) + '" data-v="' + nx + '">Usar ' + fmtKg(nx) + ' kg</button>' : '');
+  if (modalidadDe(ex) === 'dos' || modalidadDe(ex) === 'una') return s + '<span class="up">Llegaste a ' + top + en + ' con la mancuerna más pesada: pasa a una variante más difícil o suma repeticiones.</span>';
   if (m === 'polea' || (!m && (ex.e === 'Polea' || ex.e === 'Máquina'))) return s + '<span class="up">Llegaste a ' + top + en + ': sube una placa.</span>';
   if (esCorporal(ex)) return s + '<span class="up">Llegaste a ' + top + en + ': agrega peso o pasa a una variante más difícil.</span>';
   return s + '<span class="up">Llegaste a ' + top + en + ': sube un poco el peso.</span>';
@@ -2726,16 +2751,33 @@ function ordenArrastre(c, k, ks){
 function applyOrder(c, type, sameOrdered){ var q = sameOrdered.slice(); c.items = c.items.map(function(x){ return isCardio(x) === type ? q.shift() : x; }); }
 /* copiar una semana escribe cada día como su propio documento; un destino con algún día bloqueado no se toca */
 function copyWeek(src, dst){ var s = S.weeks[src]; if (!s || weekBlocked(dst)) return; var w = S.weeks[dst] || (S.weeks[dst] = emptyWeek(dst)); w._local = true; w.blank = false; s.days.forEach(function(d, i){ w.days[i] = { name: d.name, rest: d.rest, tipo: d.tipo || null, items: cloneItems(d.items) }; }); markWeekDays(dst); }
-function loadTipo(ctx, id){ var t = S.tipos[id], d = getCont(ctx); if (!t || !d) return; d.name = t.name; d.items = lastKg(cloneItems(t.items)); d.tipo = id; d.rest = false; markDirty(ctx); }
+function loadTipo(ctx, id){ var t = S.tipos[id], d = getCont(ctx); if (!t || !d) return; d.name = t.name; d.items = lastKg(cloneItems(t.items), ctx.kind === 'day' ? fechaDe(ctx.ws, ctx.i) : null); d.tipo = id; d.rest = false; markDirty(ctx); }
 /* trae el peso más alto que anotaste la última vez en cada ejercicio */
-function lastKg(items){ items.forEach(function(it){ if (isCardio(it)) return; var lk = lastKgOf(it.ex); if (lk != null) it.kg = fmtKg(lk); }); return items; }
+/* peso de partida de un día nuevo: el último usado y, si en la última sesión se llegó al tope del rango en todas las
+   series con el mismo peso, la siguiente carga del equipo, marcada en sug ("de>a") para poder deshacerla */
+function lastKg(items, date){
+  items.forEach(function(it){
+    if (isCardio(it)) return;
+    delete it.sug;
+    var ex = exById(it.ex), lk = lastKgOf(it.ex);
+    if (lk != null) it.kg = fmtKg(lk);
+    var L = date ? lastLog(it.ex, date) : null; if (!L || L.time) return;
+    var ev = window.Progresion.evaluar(L, topReps(it.reps) || L.top, setsN(it));
+    if (ev.estado !== 'sube' || !(ev.w0 > 0)) return;
+    var nx = nextKg(ex, ev.w0); if (!nx) return;
+    it.kg = fmtKg(nx); it.sug = window.Progresion.escribirSug(ev.w0, nx);
+  });
+  return items;
+}
+function sugDe(it){ var g = window.Progresion.leerSug(it.sug); return g && Math.abs(num(it.kg) - g.a) < 0.05 ? g : null; }
+function sugCount(d){ return d && d.items ? d.items.filter(sugDe).length : 0; }
 /* semana nueva: misma distribución que la anterior, con la versión actual de cada día tipo */
 function copyFromTipos(src, dst){
   var s = S.weeks[src]; if (!s || weekBlocked(dst)) return;
   var w = S.weeks[dst] || (S.weeks[dst] = emptyWeek(dst)); w._local = true; w.blank = false;
   s.days.forEach(function(d, i){
     var t = d.tipo && S.tipos[d.tipo];
-    w.days[i] = t ? { name: t.name, rest: false, tipo: d.tipo, items: lastKg(cloneItems(t.items)) } : { name: d.name, rest: d.rest, tipo: null, items: lastKg(cloneItems(d.items)) };
+    w.days[i] = t ? { name: t.name, rest: false, tipo: d.tipo, items: lastKg(cloneItems(t.items), fechaDe(dst, i)) } : { name: d.name, rest: d.rest, tipo: null, items: lastKg(cloneItems(d.items), fechaDe(dst, i)) };
   });
   markWeekDays(dst);
 }
@@ -2927,6 +2969,7 @@ document.addEventListener('click', function(e){
     case 'resp-cancel': S.confirm = null; if (S.dform) { S.dform.insp = null; S.dform.err = ''; } render(); break;
     case 'perfil-sexo': if (S.fform) { S.fform.sexo = d.s === 'M' ? 'M' : 'H'; render(); } break;
     case 'perfil-save': savePerfil(); break;
+    case 'sug-undo': var sc = getCont(ctx), si = sc && sc.items.find(function(x){ return x.k === d.k; }), sg = si && window.Progresion.leerSug(si.sug); if (sg) { si.kg = fmtKg(sg.de); delete si.sug; clearDrafts(ctx, si.k, 'kg'); markDirty(ctx); render(); } break;
     case 'use-kg': var uc = getCont(ctx), ui = uc && uc.items.find(function(x){ return x.k === d.k; }); if (ui) { ui.kg = fmtKg(+d.v); clearDrafts(ctx, ui.k, 'kg'); markDirty(ctx); render(); } break;
     case 'fz-more': S.fzMore = (S.fzMore || 6) + 20; render(); break;
     case 'prog-m': S.progM = d.m === 'kg' ? 'kg' : 'vol'; render(); break;
@@ -3024,6 +3067,7 @@ document.addEventListener('input', function(e){
       noteField(el, ictx, it, ip, null, ires);
       if (!ires.ok || it[ip] === ires.v) return;
       it[ip] = ires.v;
+      if (ip === 'kg' && it.sug) { delete it.sug; var sb = el.closest('.excard') && el.closest('.excard').querySelector('.sugbar'); if (sb) sb.hidden = true; }
     } else it[ip] = el.value;
     markDirty(ictx); updateLive();
   }
@@ -3065,6 +3109,14 @@ document.addEventListener('change', function(e){
   }
   else if (f === 'photo') { uploadPhoto(el.files && el.files[0]); el.value = ''; }
   else if (f === 'resp-file') { respaldoElegir(el.files && el.files[0]); el.value = ''; }
+  else if (f === 'equipo') {
+    var ep = el.dataset.p, ev = el.value;
+    /* sin volver a dibujar la pantalla (el campo sigue con el foco): se guarda y se actualiza solo el texto de cargas */
+    var ec = cicloCfg(), eq = ec.equipo || {};
+    if (ep === 'discos') eq.discos = ev.split(/[,;\s]+/).map(function(x){ return parseFloat(x.replace(',', '.')); }).filter(function(x){ return isFinite(x) && x > 0; }); else eq[ep] = parseFloat(ev.replace(',', '.'));
+    ec.equipo = window.Progresion.normalizarEquipo(eq); S.cicloDocs.principal = ec; markKey('k:principal');
+    var lc = document.querySelector('[data-live="cargas"]'); if (lc) lc.textContent = 'Cargas posibles con barra: ' + window.Progresion.cargasBarra(ec.equipo.barra, ec.equipo.discos).map(fmtKg).join(', ') + ' kg.';
+  }
   else if (f === 'pdate') { if (S.pform && isoOk(el.value)) pickPeso(el.value, '#p-d'); }
   else if (f === 'grp') { setGroup(curCtx(), el.dataset.k, el.value); render({ focus: '#' + cssEsc(fid(el.dataset.k, 'g')) }); }
   else if (f === 'mdate') { if (S.mform && isoOk(el.value)) { loadMform(el.value); render({ focus: '#m-d' }); } }

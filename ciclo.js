@@ -20,7 +20,11 @@ function normalizar(doc){
     var d = o.dias && diasValidos(o.dias[n]);
     dias[n] = d && d.length === n ? d : DIAS_POR_DEFECTO[n].slice();
   }
-  return { orden: orden, dias: dias };
+  var equipo = o.equipo && typeof o.equipo === 'object' ? JSON.parse(JSON.stringify(o.equipo)) : {};
+  var extra = {}; ['descargaCada', 'bloque'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
+  var out = { orden: orden, dias: dias, equipo: equipo };
+  Object.keys(extra).forEach(function(k){ out[k] = extra[k]; });
+  return out;
 }
 function diasPara(cfg, n){ n = Math.min(7, Math.max(1, +n || 0)); return (cfg && cfg.dias && cfg.dias[n] || DIAS_POR_DEFECTO[n]).slice(); }
 

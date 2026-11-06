@@ -17,11 +17,12 @@ Los datos viven solo en el teléfono. En Progreso, Datos y respaldo, "Guardar re
 - `index.html`, `app.css`, `app.js`: la app (una sola página, JavaScript sin dependencias).
 - `runtime.js`: capa de datos local en IndexedDB (colecciones, fotos, respaldo y restauración).
 - `ciclo.js`: lógica pura del ciclo de días tipo con rotación (partida, armar semana, reorganizar).
+- `progresion.js`: lógica pura de progresión de cargas (cargas posibles con los discos, siguiente carga por equipo, evaluación de la última sesión).
 - `sw.js`: service worker generado; precachea la app completa para usarla sin conexión.
 - `img/`: fotos del catálogo (Free Exercise DB, dominio público) y dos ilustraciones esquemáticas.
 - `fonts/`: Archivo (SIL Open Font License), empaquetada para funcionar sin conexión.
 - `tools/`: `build-sw.js` (genera `sw.js`), `servir.js` (servidor local de pruebas), `semilla.js` (convierte una exportación de la base anterior en un archivo de respaldo).
-- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js` (lógica del ciclo), `e2e.js` y `ciclo.e2e.js` (recorridos a tamaño iPhone con Playwright).
+- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js` y `progresion.test.js` (lógica del ciclo y de la progresión), `e2e.js`, `ciclo.e2e.js` y `progresion.e2e.js` (recorridos a tamaño iPhone con Playwright).
 
 ## Desarrollo
 
