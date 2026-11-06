@@ -88,4 +88,33 @@ prueba('mover sube y baja dentro del orden sin salirse', () => {
   assert.deepStrictEqual(C.mover(ORDEN, 0, -1), ORDEN);
 });
 
+prueba('la racha de descarga cuenta semanas seguidas con 3 o más sesiones y la corta una descarga o una semana floja', () => {
+  const s = (ws, sesiones, descarga) => ({ ws, sesiones, descarga: !!descarga });
+  assert.strictEqual(C.rachaDescarga([s('2026-09-28', 4), s('2026-10-05', 3), s('2026-10-12', 4)]), 3);
+  assert.strictEqual(C.rachaDescarga([s('2026-09-28', 4), s('2026-10-05', 2), s('2026-10-12', 4)]), 1, 'la semana de 2 sesiones corta la racha');
+  assert.strictEqual(C.rachaDescarga([s('2026-09-28', 4), s('2026-10-05', 4, true), s('2026-10-12', 4)]), 1, 'la descarga corta la racha');
+  assert.strictEqual(C.rachaDescarga([s('2026-10-12', 4, true)]), 0);
+  assert.strictEqual(C.rachaDescarga([]), 0);
+  const r = C.descargaRecomendada([s('2026-09-07', 3), s('2026-09-14', 3), s('2026-09-21', 3), s('2026-09-28', 3), s('2026-10-05', 3), s('2026-10-12', 3)], 6);
+  assert.deepStrictEqual(r, { racha: 6, cada: 6, recomendar: true });
+  assert.strictEqual(C.descargaRecomendada([s('2026-10-12', 3)], 6).recomendar, false);
+});
+
+prueba('las series de descarga bajan al 60% con mínimo 2', () => {
+  assert.strictEqual(C.seriesDescarga(4, 0.6), 2);
+  assert.strictEqual(C.seriesDescarga(3, 0.6), 2);
+  assert.strictEqual(C.seriesDescarga(5, 0.6), 3);
+  assert.strictEqual(C.seriesDescarga(1, 0.6), 1);
+  assert.strictEqual(C.seriesDescarga(0, 0.6), 0);
+  assert.strictEqual(C.seriesDescarga(4, 0.5), 2);
+});
+
+prueba('normalizar lee descargaCada y factorDescarga con límites', () => {
+  assert.strictEqual(C.normalizar({}).descargaCada, 6);
+  assert.strictEqual(C.normalizar({ descargaCada: '8' }).descargaCada, 8);
+  assert.strictEqual(C.normalizar({ descargaCada: 99 }).descargaCada, 6);
+  assert.strictEqual(C.normalizar({ factorDescarga: 0.5 }).factorDescarga, 0.5);
+  assert.strictEqual(C.normalizar({ factorDescarga: 2 }).factorDescarga, 0.6);
+});
+
 console.log(n + ' pruebas pasadas' + (process.exitCode ? ', con fallos' : ''));

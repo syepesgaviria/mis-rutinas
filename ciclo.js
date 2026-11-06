@@ -21,7 +21,9 @@ function normalizar(doc){
     dias[n] = d && d.length === n ? d : DIAS_POR_DEFECTO[n].slice();
   }
   var equipo = o.equipo && typeof o.equipo === 'object' ? JSON.parse(JSON.stringify(o.equipo)) : {};
-  var extra = {}; ['descargaCada', 'bloque'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
+  var extra = {}; ['bloque'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
+  var dc = parseInt(o.descargaCada, 10); extra.descargaCada = dc >= 2 && dc <= 20 ? dc : 6;
+  var df = parseFloat(o.factorDescarga); extra.factorDescarga = df >= 0.3 && df <= 0.9 ? Math.round(df * 100) / 100 : 0.6;
   var out = { orden: orden, dias: dias, equipo: equipo };
   Object.keys(extra).forEach(function(k){ out[k] = extra[k]; });
   return out;
@@ -76,6 +78,23 @@ function reorganizar(orden, idxAntes, dias, diasSel){
   return { dias: out, reemplazados: reemplazados, siguiente: orden.length ? p % orden.length : 0 };
 }
 
+/* DESCARGA. semanas: [{ ws, sesiones, descarga }] en cualquier orden, solo semanas ya pasadas o en curso.
+   Racha = semanas seguidas, de la más reciente hacia atrás, con al menos minSesiones anotadas; una semana de descarga
+   o una semana floja (menos sesiones) la corta, porque ya sirvió de descanso. */
+function rachaDescarga(semanas, minSesiones){
+  var min = minSesiones || 3, lista = (semanas || []).slice().sort(function(a, b){ return a.ws < b.ws ? 1 : a.ws > b.ws ? -1 : 0; }), n = 0;
+  for (var i = 0; i < lista.length; i++) {
+    var s = lista[i];
+    if (s.descarga) break;
+    if ((s.sesiones || 0) < min) break;
+    n++;
+  }
+  return n;
+}
+function descargaRecomendada(semanas, cada, minSesiones){ var r = rachaDescarga(semanas, minSesiones); return { racha: r, cada: cada, recomendar: r >= (cada || 6) }; }
+/* series de descarga: factor sobre las planeadas, redondeando hacia abajo, nunca menos de 2 (o de 1 si solo había 1) */
+function seriesDescarga(sets, factor){ var n = +sets || 0; if (n <= 0) return n; return Math.max(Math.min(2, n), Math.floor(n * (factor || 0.6))); }
+
 /* mover un elemento del orden: dir -1 sube, +1 baja */
 function mover(orden, i, dir){
   var o = orden.slice(), j = i + dir;
@@ -83,5 +102,5 @@ function mover(orden, i, dir){
   var t = o[i]; o[i] = o[j]; o[j] = t; return o;
 }
 
-window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, diasValidos: diasValidos };
+window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, diasValidos: diasValidos, rachaDescarga: rachaDescarga, descargaRecomendada: descargaRecomendada, seriesDescarga: seriesDescarga };
 })();

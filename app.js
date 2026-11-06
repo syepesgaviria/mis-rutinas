@@ -321,7 +321,7 @@ function pendCount(){ return Object.keys(S.cola).length; }
    y prototype. Un campo conocido inválido sigue aislado por T01; editar un campo conocido no toca los desconocidos */
 var UNSAFE = dict(); ['__proto__', 'constructor', 'prototype'].forEach(function(k){ UNSAFE[k] = true; });
 function knownSet(list){ var s = dict(); list.forEach(function(k){ s[k] = true; }); return s; }
-var ITEM_KNOWN = knownSet(['k', 'ex', '_k0', '_x'].concat(FIELDS)), DAY_KNOWN = knownSet(['esquema', 'fecha', 'name', 'rest', 'tipo', 'items', 'blank', 'rev', 'base', 'lin', 'origen', 'updatedAt', '_x', '_origen']), TIPO_KNOWN = knownSet(['id', 'name', 'items', 'ejemplo', 'updatedAt', '_x', '_local']), CUSTOM_KNOWN = knownSet(['n', 't', 'g', 's', 'e', 'p', 'img', 'carga', 'deleted', 'createdAt', 'updatedAt', '_x', '_ro', '_local']);
+var ITEM_KNOWN = knownSet(['k', 'ex', '_k0', '_x'].concat(FIELDS)), DAY_KNOWN = knownSet(['esquema', 'fecha', 'name', 'rest', 'tipo', 'items', 'blank', 'descarga', 'rev', 'base', 'lin', 'origen', 'updatedAt', '_x', '_origen']), TIPO_KNOWN = knownSet(['id', 'name', 'items', 'ejemplo', 'updatedAt', '_x', '_local']), CUSTOM_KNOWN = knownSet(['n', 't', 'g', 's', 'e', 'p', 'img', 'carga', 'deleted', 'createdAt', 'updatedAt', '_x', '_ro', '_local']);
 function extrasOf(o, known){ var x = null; if (!isObj(o)) return null; Object.keys(o).forEach(function(k){ if (known[k] || UNSAFE[k] || o[k] === undefined) return; if (!x) x = dict(); x[k] = clone(o[k]); }); return x; }
 function putExtras(body, x){ if (x) Object.keys(x).forEach(function(k){ if (!UNSAFE[k] && !own(body, k)) body[k] = clone(x[k]); }); return body; }
 function serItems(items){ return items.map(function(it){ var o = { k: String(it._k0 != null ? it._k0 : it.k), ex: String(it.ex) }; FIELDS.forEach(function(f){ if (it[f] != null && it[f] !== '') o[f] = String(it[f]); }); return putExtras(o, it._x); }); }
@@ -339,11 +339,11 @@ function buildOp(key, now){
   if (kind === 'w') throw new Error('la semana ya no se guarda como un solo documento');
   /* día: esquema explícito. rev identifica esta escritura; base y lin (predecesor y cadena corta) se fijan al enviar,
      cuando se conoce la versión que el servicio tiene; origen se conserva si el día vino de una migración */
-  if (kind === 'd') { var dd = liveDay(id); if (!dd) throw new Error('día ausente'); var wsb = S.weeks[wsOf(id)]; var body = { esquema: 1, fecha: id, name: String(dd.name || ''), rest: !!dd.rest, tipo: dd.tipo || null, items: serItems(dd.items) }; if (wd(id) === 0 && wsb && wsb.blank) body.blank = true; if (isObj(dd._origen)) body.origen = clone(dd._origen); body.updatedAt = now; return { op: 'set', body: putExtras(body, dd._x) }; }
+  if (kind === 'd') { var dd = liveDay(id); if (!dd) throw new Error('día ausente'); var wsb = S.weeks[wsOf(id)]; var body = { esquema: 1, fecha: id, name: String(dd.name || ''), rest: !!dd.rest, tipo: dd.tipo || null, items: serItems(dd.items) }; if (wd(id) === 0 && wsb && wsb.blank) body.blank = true; if (dd.descarga === true) body.descarga = true; if (isObj(dd._origen)) body.origen = clone(dd._origen); body.updatedAt = now; return { op: 'set', body: putExtras(body, dd._x) }; }
   if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
-  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; if (nk.descargaCada !== undefined) bk.descargaCada = nk.descargaCada; if (nk.bloque !== undefined) bk.bloque = nk.bloque; return { op: 'set', body: bk }; }
+  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; return { op: 'set', body: bk }; }
   if (kind === 'f') { var pf = S.perfilDocs[id]; if (!pf) throw new Error('perfil ausente'); return { op: 'set', body: { estatura: pf.estatura, nacimiento: pf.nacimiento || pf._nac0 || '', sexo: pf.sexo === 'M' ? 'M' : 'H', updatedAt: now } }; }
   var c = S.custom[id]; if (!c) throw new Error('ejercicio ausente'); return { op: 'set', body: serCustom(c, now) };
 }
@@ -641,7 +641,7 @@ function normWeek(o, id){
   return { start: id, blank: !!o.blank, days: [0,1,2,3,4,5,6].map(function(i){ var d = isObj(days[i]) ? days[i] : {}; return { name: String(d.name || ''), rest: !!d.rest, tipo: d.tipo ? String(d.tipo) : null, items: normItems(d.items) }; }) };
 }
 /* día independiente: el documento se lee como un día de la semana antigua; rev/base/lin/blank/origen van a dmeta */
-function normDay(o, id){ o = isObj(o) ? o : {}; var d = { name: String(o.name || ''), rest: !!o.rest, tipo: o.tipo ? String(o.tipo) : null, items: normItems(o.items) }; var x = extrasOf(o, DAY_KNOWN); if (x) d._x = x; if (isObj(o.origen)) d._origen = clone(o.origen); return d; }
+function normDay(o, id){ o = isObj(o) ? o : {}; var d = { name: String(o.name || ''), rest: !!o.rest, tipo: o.tipo ? String(o.tipo) : null, items: normItems(o.items) }; if (o.descarga === true) d.descarga = true; var x = extrasOf(o, DAY_KNOWN); if (x) d._x = x; if (isObj(o.origen)) d._origen = clone(o.origen); return d; }
 function metaDia(o){ return { src: 'dia', rev: revOf(o), base: typeof o.base === 'string' ? o.base : null, lin: linOf(o), blank: o.blank === true, mig: isObj(o.origen) && typeof o.origen.migracion === 'string' ? o.origen.migracion : null }; }
 function normTipo(o, id){ o = isObj(o) ? o : {}; var t = { id: id, name: String(o.name || ''), items: normItems(o.items), ejemplo: !!o.ejemplo }; var x = extrasOf(o, TIPO_KNOWN); if (x) t._x = x; return t; }
 /* propios: textos, listas de textos e id de foto válidos; _ro marca la copia de solo lectura de un documento aislado */
@@ -678,6 +678,7 @@ function dayProblems(o, id){
   if (o.rest !== undefined && typeof o.rest !== 'boolean') why.push('la marca de descanso no es sí o no');
   if (o.tipo !== undefined && o.tipo !== null && !textOk(o.tipo)) why.push('el día tipo no es un identificador');
   if (o.blank !== undefined && typeof o.blank !== 'boolean') why.push('la marca de semana en blanco no es sí o no');
+  if (o.descarga !== undefined && typeof o.descarga !== 'boolean') why.push('la marca de descarga no es sí o no');
   if (o.rev !== undefined && !(typeof o.rev === 'string' && o.rev)) why.push('la revisión no es texto');
   if (o.base !== undefined && o.base !== null && typeof o.base !== 'string') why.push('la revisión base no es texto');
   if (o.lin !== undefined && !Array.isArray(o.lin)) why.push('la cadena de revisiones no es una lista');
@@ -1293,12 +1294,12 @@ function vSemana(){
   var st = w ? weekStats(w) : null, dn = w ? doneStats(w) : null;
   var h = '<div class="weekhead">' + (desk ? '' : '<div class="whtop"><span class="eyebrow">Mis rutinas</span><button type="button" class="linkbtn histbtn" data-a="open-hist">' + ic('hist', 18) + 'Historial</button></div>') + '<div class="weeknav">' +
     '<button type="button" class="sqbtn" data-a="wk-prev" aria-label="Semana anterior">' + ic('left', 20, 2) + '</button>' +
-    '<div class="weektitle"><h1>' + weekLabel(ws) + '</h1><span class="weeksub">Semana ' + wk.w + ' · ' + wk.y + (rel ? ' <span class="pill accent">' + rel + '</span>' : '') +
+    '<div class="weektitle"><h1>' + weekLabel(ws) + '</h1><span class="weeksub">Semana ' + wk.w + ' · ' + wk.y + (rel ? ' <span class="pill accent">' + rel + '</span>' : '') + (esDescarga(w) ? ' <span class="pill">Descarga</span>' : '') +
     (ws !== curMonday() && rel !== 'Próxima semana' ? ' <button type="button" class="linkbtn sm" data-a="wk-today">Ir a esta semana</button>' : '') + '</span></div>' +
     '<button type="button" class="sqbtn" data-a="wk-next" aria-label="Semana siguiente">' + ic('right', 20, 2) + '</button></div>' +
     (desk && w ? '<div class="deskstats">' + statHtml(dn.days, 'días de fuerza', st.fuerzaDays) + statHtml(dn.sets, 'series', st.sets) + statHtml(fmtNum(dn.min), 'min de cardio', fmtNum(st.min)) + '</div>' : '') +
     (desk ? '<button type="button" class="btn deskhist" data-a="open-hist">' + ic('hist', 18) + 'Historial</button>' : '') +
-    '</div>' + vAvisoPeso() + (S.local ? '<p class="localnote">Tus datos se guardan solo en este navegador.</p>' : '') + vAvisoRespaldo() + vAislados() + offBanner() + pendSlot() + migBanner(ws);
+    '</div>' + vAvisoPeso() + (S.local ? '<p class="localnote">Tus datos se guardan solo en este navegador.</p>' : '') + vAvisoRespaldo() + vAvisoDescarga() + vAislados() + offBanner() + pendSlot() + migBanner(ws);
   if (!w) {
     /* sin lectura definitiva de este intervalo no se ofrece crear: una ausencia de caché no es una ausencia */
     var waiting = S.dbState === 'loading' || (S.dbState === 'ok' && (!inRangoWeek(ws) || !S.defin.d || S.legacyMode == null || (S.legacyMode && !S.defin.w)));
@@ -1318,7 +1319,7 @@ function vDayCard(d, i){
   if (d.rest) return '<button type="button" class="daycard muted" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">Descanso</span>' + today + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
   if (!d.items.length) return '<button type="button" class="daycard muted" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(d.name || 'Sin plan') + '</span>' + today + '</span></span><span class="dcta">Planear</span></button>';
   var cardioOnly = !s.f && s.c;
-  return '<button type="button" class="daycard" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(dayName(d, s)) + '</span>' + (cardioOnly ? '<span class="pill">CARDIO</span>' : '') + (sugCount(d) && !d.items.some(hasLog) ? '<span class="pill accent">' + sugCount(d) + (sugCount(d) === 1 ? ' sube' : ' suben') + '</span>' : '') + (d.items.some(hasLog) ? '<span class="pill good">Hecho</span>' : '') + today + '</span><span class="dmeta">' + esc(dayMeta(d, s)) + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
+  return '<button type="button" class="daycard" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(dayName(d, s)) + '</span>' + (cardioOnly ? '<span class="pill">CARDIO</span>' : '') + (d.descarga ? '<span class="pill">Descarga</span>' : '') + (sugCount(d) && !d.items.some(hasLog) ? '<span class="pill accent">' + sugCount(d) + (sugCount(d) === 1 ? ' sube' : ' suben') + '</span>' : '') + (d.items.some(hasLog) ? '<span class="pill good">Hecho</span>' : '') + today + '</span><span class="dmeta">' + esc(dayMeta(d, s)) + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
 }
 function vCol(d, i){
   var date = dayDate(S.ws, i), s = dayStats(d), today = isToday(S.ws, i);
@@ -2082,11 +2083,37 @@ function cicloDiasPara(ws, modo, n){
   for (var i = 0; i < 7 && sel.length < faltan; i++) if (sel.indexOf(i) < 0 && cicloElegible(ws, i)) sel.push(i);
   return sel.sort(function(a, b){ return a - b; });
 }
-function openCiclo(modo){
+/* DESCARGA: semanas seguidas de progresión y recomendación */
+function sesionesDe(w){ return w ? w.days.filter(diaHecho).length : 0; }
+function esDescarga(w){ return !!w && w.days.some(function(d){ return d.descarga === true; }); }
+/* semanas que cuentan para la racha antes de la semana objetivo: las terminadas, y la que está en curso solo si ya tiene
+   las sesiones mínimas (si no, todavía no se sabe) */
+function semanasParaDescarga(objetivo){
+  var cur = curMonday(), out = [];
+  Object.keys(S.weeks).forEach(function(ws){
+    if (ws >= objetivo) return;
+    var w = S.weeks[ws], n = sesionesDe(w), dsc = esDescarga(w);
+    if (ws === cur && n < 3 && !dsc) return;
+    out.push({ ws: ws, sesiones: n, descarga: dsc });
+  });
+  return out;
+}
+function descargaInfo(objetivo){ var c = cicloCfg(); return window.Ciclo.descargaRecomendada(semanasParaDescarga(objetivo), c.descargaCada, 3); }
+function vAvisoDescarga(){
+  if (S.dbState !== 'ok' || cicloCfg().orden.length < 2) return '';
+  var cur = curMonday(), next = shiftWeek(cur, 1);
+  if (S.ws !== cur && S.ws !== next) return '';
+  if (esDescarga(S.weeks[cur]) || esDescarga(S.weeks[next]) || S.descargaIgnorada === next) return '';
+  var info = descargaInfo(next); if (!info.recomendar) return '';
+  var fd = Math.round(cicloCfg().factorDescarga * 100);
+  return '<div class="banner pend" role="status"><span>Llevas ' + info.racha + ' semanas seguidas de progresión. Toca una semana de descarga: mismas sesiones, series al ' + fd + '% y pesos sin subir.</span><span class="row2"><button type="button" class="btn btn-sm" data-a="descarga-armar">Armar la próxima en descarga</button><button type="button" class="linkbtn sm" data-a="descarga-despues">Después</button></span></div>';
+}
+function openCiclo(modo, ws, descarga){
   var c = cicloCfg(); if (c.orden.length < 2) { showToast('El ciclo necesita al menos dos días tipo. Defínelo en Días tipo.'); return; }
-  if (weekBlocked(S.ws)) { showToast('Esta semana tiene datos que la app no reconoce; no se puede reorganizar.'); return; }
-  var n = S.cicloN || 4, dias = cicloDiasPara(S.ws, modo, n);
-  push({ v: 'ciclo', ws: S.ws, modo: modo, n: n, dias: dias, from: 'Semana' });
+  ws = ws || S.ws;
+  if (weekBlocked(ws)) { showToast('Esta semana tiene datos que la app no reconoce; no se puede reorganizar.'); return; }
+  var n = S.cicloN || 4, dias = cicloDiasPara(ws, modo, n);
+  push({ v: 'ciclo', ws: ws, modo: modo, n: n, dias: dias, from: 'Semana', descarga: descarga === undefined ? descargaInfo(ws).recomendar && !esDescarga(S.weeks[ws]) : !!descarga });
 }
 /* vista previa: qué recibe cada día según el modo */
 function cicloPlan(t){
@@ -2109,27 +2136,37 @@ function vCiclo(t){
     else { txt = 'Descanso'; if (plan.reemplazados && plan.reemplazados.indexOf(i) >= 0) pill = '<span class="pill">Quita el plan</span>'; }
     return '<button type="button" class="daycard' + (x.accion === 'descanso' ? ' muted' : '') + '" data-a="ciclo-dia" data-i="' + i + '" aria-pressed="' + sel + '"' + (eleg ? '' : ' disabled') + '>' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(txt) + '</span>' + pill + '</span></span>' + (eleg ? '<span class="chev">' + ic(sel ? 'check' : 'plus', 18, 2) + '</span>' : '') + '</button>';
   }).join('') + '</div>';
+  var fd = Math.round(c.factorDescarga * 100), di = descargaInfo(t.ws);
+  b += '<label class="check" style="margin-top:4px;align-items:flex-start"><input type="checkbox" data-a="ciclo-descarga"' + (t.descarga ? ' checked' : '') + '><span><b>Semana de descarga</b><br><small class="hint">Mismas sesiones, series al ' + fd + '% y pesos sin subir. ' + (di.recomendar ? 'Toca: llevas ' + di.racha + ' semanas seguidas.' : 'Racha actual: ' + di.racha + ' de ' + c.descargaCada + ' semanas.') + '</small></span></label>';
   var aviso = plan.reemplazados && plan.reemplazados.length ? '<p class="hint small">Se reemplaza el plan de ' + plan.reemplazados.map(function(i){ return DAYS[i].toLowerCase(); }).join(', ') + '. Los días con series anotadas no se tocan.</p>' : '';
   var foot = '<div class="vfoot"><div class="footinfo"><b>' + nSel + (nSel === 1 ? ' sesión' : ' sesiones') + (hechos ? ' (' + hechos + (hechos === 1 ? ' hecha)' : ' hechas)') : '') + '</b><small>' + esc(c.orden.map(tipoNombre).join(' → ')) + '</small></div><button type="button" class="btn btn-primary" data-a="ciclo-ok"' + (t.dias.length ? '' : ' disabled') + '>' + (t.modo === 'reorg' ? 'Reorganizar' : 'Armar semana') + '</button></div>';
   return '<section class="view">' + topbar(t.from || 'Semana', viewTitle(t)) + '<div class="vbody">' + b + aviso + '</div>' + foot + '</section>';
 }
-function aplicarPlanCiclo(ws, plan, modo){
+function aplicarPlanCiclo(ws, plan, modo, descarga){
   if (weekBlocked(ws)) return false;
   if (!S.weeks[ws]) { S.weeks[ws] = emptyWeek(ws); S.weeks[ws]._local = true; }
+  var factor = cicloCfg().factorDescarga;
   plan.dias.forEach(function(x){
     var ctx = { kind: 'day', ws: ws, i: x.i }, day = getCont(ctx); if (!day) return;
-    if (x.accion === 'mantener') return;
-    if (x.accion === 'tipo') { loadTipo(ctx, x.tipo); return; }
+    /* en descarga, los días planeados sin hacer también se rearman para aplicarles la reducción */
+    if (x.accion === 'mantener' && !(descarga && x.tipo && !diaHecho(day))) return;
+    if (x.accion === 'tipo' || x.accion === 'mantener') {
+      loadTipo(ctx, x.tipo);
+      if (descarga) { day.descarga = true; day.items.forEach(function(it){ if (isCardio(it)) return; var sg = window.Progresion.leerSug(it.sug); if (sg) it.kg = fmtKg(sg.de); delete it.sug; var n = setsN(it); if (n) it.sets = String(window.Ciclo.seriesDescarga(n, factor)); }); }
+      else delete day.descarga;
+      markDirty(ctx);
+      return;
+    }
     if (hasDayContent(day) && !day.rest) { day.rest = true; day.items = []; day.tipo = null; day.name = ''; markDirty(ctx); }
     else if (!day.rest && modo !== 'reorg') { day.rest = true; markDirty(ctx); }
   });
   return true;
 }
 function aplicarCiclo(t){
-  if (!aplicarPlanCiclo(t.ws, cicloPlan(t), t.modo)) return;
-  S.cicloN = t.dias.length;
+  if (!aplicarPlanCiclo(t.ws, cicloPlan(t), t.modo, !!t.descarga)) return;
+  S.cicloN = t.dias.length; S.ws = t.ws;
   pop();
-  showToast(t.modo === 'reorg' ? 'Semana reorganizada con el ciclo.' : 'Semana armada con el ciclo. Ajusta cada día si hace falta.');
+  showToast(t.descarga ? 'Semana de descarga armada: series reducidas y pesos sin subir.' : t.modo === 'reorg' ? 'Semana reorganizada con el ciclo.' : 'Semana armada con el ciclo. Ajusta cada día si hace falta.');
 }
 /* semana nueva automática: mismos días de la semana que la anterior, con el ciclo siguiendo donde quedó */
 function autoFillCiclo(src, ws){
@@ -2169,6 +2206,9 @@ function vCicloCfg(){
     campo('discos', 'Discos disponibles (kg, uno de cada par)', e.discos.map(fmtKg).join(', '), 'text', '5, 6.8, 10, 15.9') +
     '<p class="hint small" data-live="cargas">Cargas posibles con barra: ' + esc(window.Progresion.cargasBarra(e.barra, e.discos).map(fmtKg).join(', ')) + ' kg.</p>' +
     campo('pasoMancuerna', 'Paso entre mancuernas (kg)', fmtKg(e.pasoMancuerna)) + campo('mancuernaMax', 'Mancuerna más pesada (kg)', fmtKg(e.mancuernaMax)) + campo('pasoPolea', 'Paso de la polea (kg)', fmtKg(e.pasoPolea)) + '</div>';
+  var di = descargaInfo(shiftWeek(curMonday(), 1));
+  b += '<div class="sechead"><h2>Descarga</h2><span>Racha: ' + di.racha + (di.racha === 1 ? ' semana' : ' semanas') + '</span></div><p class="hint small">Cada tantas semanas seguidas con 3 o más sesiones, la app propone una semana ligera: mismas sesiones, menos series y pesos sin subir. Una semana floja o una descarga reinician la cuenta.</p>' +
+    '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + campo('descargaCada', 'Cada cuántas semanas', String(c.descargaCada), 'numeric') + campo('factorDescarga', 'Series en descarga (% de las planeadas)', String(Math.round(c.factorDescarga * 100)), 'numeric') + '</div>';
   return '<section class="view">' + topbar('Días tipo', 'Ciclo') + '<div class="vbody">' + b + '</div></section>';
 }
 function vProgreso(){
@@ -2959,6 +2999,9 @@ document.addEventListener('click', function(e){
     case 'ciclo-n': t.dias = cicloDiasPara(t.ws, t.modo, +d.n); render(); break;
     case 'ciclo-dia': var cdi = +d.i, cpos = t.dias.indexOf(cdi); if (cpos >= 0) t.dias.splice(cpos, 1); else t.dias.push(cdi); t.dias.sort(function(a, b){ return a - b; }); render(); break;
     case 'ciclo-ok': aplicarCiclo(t); break;
+    case 'ciclo-descarga': t.descarga = !!el.checked; render(); break;
+    case 'descarga-armar': var dws = shiftWeek(curMonday(), 1); openCiclo(S.weeks[dws] && hasContent(S.weeks[dws]) ? 'reorg' : 'armar', dws, true); break;
+    case 'descarga-despues': S.descargaIgnorada = shiftWeek(curMonday(), 1); render(); break;
     case 'open-ciclocfg': push({ v: 'ciclocfg' }); break;
     case 'cc-mover': cicloEditar(function(c){ c.orden = window.Ciclo.mover(c.orden, +d.i, +d.dir); }); break;
     case 'cc-quitar': cicloEditar(function(c){ c.orden.splice(+d.i, 1); }); break;
@@ -3113,6 +3156,7 @@ document.addEventListener('change', function(e){
     var ep = el.dataset.p, ev = el.value;
     /* sin volver a dibujar la pantalla (el campo sigue con el foco): se guarda y se actualiza solo el texto de cargas */
     var ec = cicloCfg(), eq = ec.equipo || {};
+    if (ep === 'descargaCada' || ep === 'factorDescarga') { var dv = parseFloat(ev.replace(',', '.')); if (ep === 'descargaCada') ec.descargaCada = dv; else ec.factorDescarga = dv / 100; ec = window.Ciclo.normalizar(ec); ec.equipo = window.Progresion.normalizarEquipo(ec.equipo); S.cicloDocs.principal = ec; markKey('k:principal'); return; }
     if (ep === 'discos') eq.discos = ev.split(/[,;\s]+/).map(function(x){ return parseFloat(x.replace(',', '.')); }).filter(function(x){ return isFinite(x) && x > 0; }); else eq[ep] = parseFloat(ev.replace(',', '.'));
     ec.equipo = window.Progresion.normalizarEquipo(eq); S.cicloDocs.principal = ec; markKey('k:principal');
     var lc = document.querySelector('[data-live="cargas"]'); if (lc) lc.textContent = 'Cargas posibles con barra: ' + window.Progresion.cargasBarra(ec.equipo.barra, ec.equipo.discos).map(fmtKg).join(', ') + ' kg.';
