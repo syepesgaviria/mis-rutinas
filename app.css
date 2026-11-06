@@ -212,6 +212,19 @@ textarea.inp{height:auto;min-height:120px;padding:10px 12px;line-height:1.45;res
 .logbox{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px dashed var(--line-strong)}
 .loglbl{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .loghead{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.restbtn{min-height:30px;padding:0 10px;border:1px solid var(--accent-line);border-radius:8px;background:var(--accent-tint);color:var(--accent-strong);font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.restbtn:hover{border-color:var(--accent)}
+/* cronómetro de descanso: barra fija encima del pie de la pantalla */
+#cronometro{position:fixed;left:50%;transform:translateX(-50%);z-index:55;width:calc(100% - 32px);max-width:528px;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:var(--text);color:var(--bg);box-shadow:var(--shadow);overflow:hidden}
+#cronometro .cbarra{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.14);transition:width .25s linear;pointer-events:none}
+#cronometro .ctxt{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+#cronometro .ctxt b{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+#cronometro .ctxt small{font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cronometro .cbtn{position:relative;min-height:40px;min-width:44px;padding:0 12px;border:1px solid rgba(255,255,255,.3);border-radius:10px;background:rgba(255,255,255,.1);color:inherit;font-size:14px;font-weight:700}
+#cronometro.pausa .ctxt b{opacity:.6}
+#cronometro.fin{background:var(--accent);color:var(--on-accent);animation:cfin .6s ease-in-out 4}
+@keyframes cfin{50%{filter:brightness(1.4)}}
+@media (prefers-reduced-motion:reduce){#cronometro.fin{animation:none}}
 .logvol{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
 .logtbl{display:grid;grid-template-columns:44px minmax(0,104px) minmax(0,104px);gap:6px 8px;align-items:center}
 .logtbl.t1{grid-template-columns:44px minmax(0,104px)}

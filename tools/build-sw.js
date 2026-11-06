@@ -7,7 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const raiz = path.resolve(__dirname, '..');
-const fijos = ['index.html', 'app.css', 'app.js', 'runtime.js', 'ciclo.js', 'progresion.js', 'manifest.webmanifest'];
+const fijos = ['index.html', 'app.css', 'app.js', 'runtime.js', 'ciclo.js', 'progresion.js', 'cronometro.js', 'manifest.webmanifest'];
 const carpetas = ['fonts', 'icons', 'img'];
 
 function listar(dir){

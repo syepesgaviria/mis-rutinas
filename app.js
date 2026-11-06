@@ -49,6 +49,7 @@ var I = {
   trend:'<path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
   swap:'<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
   cycle:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/>',
+  timer:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9 2h6"/>',
   check:'<path d="m5 12 5 5L20 7"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
   up:'<path d="m6 15 6-6 6 6"/>',
@@ -2527,11 +2528,18 @@ function logHint(it, ex, date){
 /* día futuro: solo la última vez y la sugerencia de peso, sin casillas para anotar */
 function vPlanHint(it, ex, date){ if (!lastLog(it.ex, date)) return ''; return '<div class="logbox"><p class="loghint">' + logHint(it, ex, date) + '</p></div>'; }
 function hid(k, i, s){ return 'h-' + domId(k) + '-' + i + '-' + s; }
+/* descanso que aplica al terminar una serie de este ejercicio: el del grupo si está en superserie, si no el propio */
+function descansoEfectivo(it, ctx){
+  if (it.g) { var c = getCont(ctx), run = c ? c.items.filter(function(x){ return x.g === it.g && !isCardio(x); }) : []; var r = (run.filter(function(x){ return x.rest; }).pop() || {}).rest; if (r) return r; }
+  return it.rest || '';
+}
 /* una casilla muestra lo que se está escribiendo si no es válido; si no, lo guardado (también un valor heredado que no se
    puede leer, marcado, en lugar de esconderlo) */
 function vLog(it, ex, date, ctx){
   var n = logN(it), rs = repsArr(it.hr), rr = String(it.hr || '').split(','), time = isTime(it.reps), raw = kgRaw(it), ks = kgSets(it, n), k = esc(it.k), kl = kgLabel(ex), extra = logExtra(it);
-  var b = '<div class="logbox"><div class="loghead"><span class="loglbl">Lo que hiciste</span><span class="logvol" data-vol="' + k + '">' + volText(it) + '</span></div>' +
+  var rs0 = descansoEfectivo(it, ctx), rsec = window.Cronometro ? window.Cronometro.parse(rs0) : null;
+  var b = '<div class="logbox"><div class="loghead"><span class="loglbl">Lo que hiciste</span><span class="logvol" data-vol="' + k + '">' + volText(it) + '</span>' +
+    (rsec ? '<button type="button" class="restbtn" data-a="timer-start" data-s="' + rsec + '" data-l="' + esc(ex.n) + '" aria-label="Iniciar descanso de ' + esc(window.Cronometro.fmt(rsec)) + '">' + ic('timer', 15, 2) + window.Cronometro.fmt(rsec) + '</button>' : '') + '</div>' +
     '<div class="logtbl' + (time ? ' t1' : '') + '"><span class="lth" aria-hidden="true">Serie</span>' + (time ? '' : '<span class="lth" aria-hidden="true">' + kl + '</span>') + '<span class="lth" aria-hidden="true">' + (time ? 'Segundos' : repsLabel(ex)) + '</span>';
   for (var i = 0; i < n; i++) {
     b += '<span class="lsn" aria-hidden="true">' + (i + 1) + '</span>';
@@ -2661,6 +2669,7 @@ function viewTitle(t){ return { dia: 'Editar día', tipo: 'Editar día tipo', li
 var detTimer = null;
 function render(opts){
   opts = opts || {};
+  if (window.Cronometro) setTimeout(window.Cronometro.colocar, 0);
   S.pending = false; S.chart = null;
   var app = document.getElementById('app');
   var dr = document.querySelector('.drawer'), dTop = dr ? dr.scrollTop : 0, wy = window.scrollY;
@@ -3013,6 +3022,7 @@ document.addEventListener('click', function(e){
     case 'perfil-sexo': if (S.fform) { S.fform.sexo = d.s === 'M' ? 'M' : 'H'; render(); } break;
     case 'perfil-save': savePerfil(); break;
     case 'sug-undo': var sc = getCont(ctx), si = sc && sc.items.find(function(x){ return x.k === d.k; }), sg = si && window.Progresion.leerSug(si.sug); if (sg) { si.kg = fmtKg(sg.de); delete si.sug; clearDrafts(ctx, si.k, 'kg'); markDirty(ctx); render(); } break;
+    case 'timer-start': if (window.Cronometro) window.Cronometro.iniciar(+d.s, d.l); break;
     case 'use-kg': var uc = getCont(ctx), ui = uc && uc.items.find(function(x){ return x.k === d.k; }); if (ui) { ui.kg = fmtKg(+d.v); clearDrafts(ctx, ui.k, 'kg'); markDirty(ctx); render(); } break;
     case 'fz-more': S.fzMore = (S.fzMore || 6) + 20; render(); break;
     case 'prog-m': S.progM = d.m === 'kg' ? 'kg' : 'vol'; render(); break;
