@@ -7,7 +7,7 @@
 'use strict';
 var VERSION = '1.0.0';
 var DB_NAME = 'mis-rutinas', DB_VERSION = 1;
-var COLECCIONES = ['dias', 'semanas', 'diasTipo', 'pesos', 'medidas', 'perfil', 'ejercicios', 'migracion'];
+var COLECCIONES = ['dias', 'semanas', 'diasTipo', 'pesos', 'medidas', 'perfil', 'ejercicios', 'migracion', 'ciclo'];
 var FORMATO_RESPALDO = 'mis-rutinas-respaldo-1';
 var MAX_FOTO = 5 * 1024 * 1024;
 var DIAS_RECORDATORIO = 14;

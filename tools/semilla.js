@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const [, , dirDb, dirFotos, salida] = process.argv;
 if (!dirDb || !salida) { console.error('uso: node tools/semilla.js <carpeta-db> <carpeta-fotos> <salida.json>'); process.exit(1); }
-const COLECCIONES = ['dias', 'semanas', 'diasTipo', 'pesos', 'medidas', 'perfil', 'ejercicios', 'migracion'];
+const COLECCIONES = ['dias', 'semanas', 'diasTipo', 'pesos', 'medidas', 'perfil', 'ejercicios', 'migracion', 'ciclo'];
 const tipos = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' };
 const doc = { formato: 'mis-rutinas-respaldo-1', exportado: new Date().toISOString(), app: 'semilla', colecciones: {}, fotos: {} };
 let n = 0;

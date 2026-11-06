@@ -48,6 +48,11 @@ var I = {
   image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
   trend:'<path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
   swap:'<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
+  cycle:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/>',
+  check:'<path d="m5 12 5 5L20 7"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  up:'<path d="m6 15 6-6 6 6"/>',
+  down:'<path d="m6 9 6 6 6-6"/>',
   scale:'<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 9a4 4 0 0 1 8 0"/><path d="m12 9 1.5-2"/>'
 };
 function ic(n, s, w){ s = s || 20; w = w || 1.8; return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="'+w+'" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+I[n]+'</svg>'; }
@@ -100,8 +105,8 @@ function isToday(ws, i){ return iso(dayDate(ws, i)) === todayIso(); }
 /* estado */
 var S = {
   tab: 'semana', ws: defaultWeek(), stack: [],
-  weeks: dict(), tipos: dict(), custom: dict(), pesos: dict(), medidas: dict(), perfilDocs: dict(),
-  db: null, assets: undefined, dbState: 'loading', loaded: {d: false, w: false, t: false, c: false, p: false, m: false, f: false, g: false},
+  weeks: dict(), tipos: dict(), custom: dict(), pesos: dict(), medidas: dict(), perfilDocs: dict(), cicloDocs: dict(),
+  db: null, assets: undefined, dbState: 'loading', loaded: {d: false, w: false, t: false, c: false, p: false, m: false, f: false, g: false, k: false},
   libQ: '', libT: 'fuerza', libG: 'Todos', sel: [],
   noteOpen: dict(), confirm: null, toast: null, form: null, formErr: '', tname: '',
   drafts: dict(), aislados: dict(), aislOpen: false,
@@ -205,11 +210,11 @@ var dirty = {}, timers = {}, ver = {}, inflight = {};
 var COLA_PREFIX = 'rutinas:cola:', ILEG_PREFIX = 'rutinas:ilegible:', DESP_PREFIX = 'rutinas:desplazada:', MIO_PREFIX = 'rutinas:mio:', MAX_DOC_BYTES = 262144, MAX_DOC_DEPTH = 32;
 /* d: un documento por fecha (dias/AAAA-MM-DD, esquema 1). w: semanas del formato anterior, fuente inmutable de solo
    lectura hasta migrar. g: estado de la migración (migracion/dias-1) */
-var COLS = { d: 'dias', w: 'semanas', t: 'diasTipo', p: 'pesos', m: 'medidas', f: 'perfil', c: 'ejercicios', g: 'migracion' };
+var COLS = { d: 'dias', w: 'semanas', t: 'diasTipo', p: 'pesos', m: 'medidas', f: 'perfil', c: 'ejercicios', g: 'migracion', k: 'ciclo' };
 var MIG_ID = 'dias-1', RANGO_SEMANAS = 52, RANGO_ADELANTE = 4, MAX_MIOS = 400, MAX_LIN = 8;
 var WHY = { sinconexion: 'sin conexión', sinacceso: 'sin acceso al guardado en la nube: quedan como borrador en este dispositivo', transitorio: 'el servicio no respondió', presion: 'el servicio pidió bajar el ritmo', cuota: 'se llenó el espacio de guardado (cuota)', tamano: 'un cambio supera el tamaño máximo por documento', apartado: 'el documento guardado no se reconoce y se conserva', rechazado: 'el servicio rechazó el formato del cambio', preparar: 'no se pudo preparar el envío', desconocido: 'error no reconocido del servicio', conflicto: 'otro dispositivo guardó una versión distinta del mismo día; decide cuál conservar en «Ver pendientes»', ocupado: 'otro dispositivo está guardando ese día; se reintenta en un momento', sinlectura: 'esperando la lectura definitiva del servicio', legado: 'pendiente del formato anterior: se concilia a mano en «Ver pendientes»', creacion: 'sin garantía de creación segura: este runtime no ofrece arriendo del documento, y crear sin él podría pisar un día creado por otro dispositivo; el cambio se conserva como borrador', proteccion: 'guardado en la nube, pero el navegador no permitió guardar la protección local de esta versión; el borrador se conserva aquí hasta poder guardarla' };
 function keyPath(key){ return COLS[key.charAt(0)] + '/' + key.slice(2); }
-function stateMap(kind){ return { d: S.ddocs, w: S.legacy, t: S.tipos, p: S.pesos, m: S.medidas, f: S.perfilDocs, c: S.custom, g: S.migDocs }[kind]; }
+function stateMap(kind){ return { d: S.ddocs, w: S.legacy, t: S.tipos, p: S.pesos, m: S.medidas, f: S.perfilDocs, c: S.custom, g: S.migDocs, k: S.cicloDocs }[kind]; }
 function isLocked(path){ var b = S.aislados[path]; return !!(b && b.lock); }
 function weekLocked(ws){ return isLocked('semanas/' + ws); }
 /* fechas y claves de día */
@@ -338,6 +343,7 @@ function buildOp(key, now){
   if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
+  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); return { op: 'set', body: { orden: nk.orden, dias: nk.dias, updatedAt: now } }; }
   if (kind === 'f') { var pf = S.perfilDocs[id]; if (!pf) throw new Error('perfil ausente'); return { op: 'set', body: { estatura: pf.estatura, nacimiento: pf.nacimiento || pf._nac0 || '', sexo: pf.sexo === 'M' ? 'M' : 'H', updatedAt: now } }; }
   var c = S.custom[id]; if (!c) throw new Error('ejercicio ausente'); return { op: 'set', body: serCustom(c, now) };
 }
@@ -734,7 +740,7 @@ function checkDoc(key, id, data){
   if (!docIdOk(id)) return { why: ['el identificador no es válido'], lock: true };
   if (!isObj(data)) return { why: [data == null ? 'el documento existe pero no tiene cuerpo' : 'el documento no tiene el formato esperado'], lock: k !== 'p' && k !== 'm' };
   if (k === 'd') { why = dayProblems(data, id); return why.length ? { why: why, lock: true } : null; }
-  if (k === 'g') return null;
+  if (k === 'g' || k === 'k') return null;
   if (k === 'w') { why = weekProblems(data); return why.length ? { why: why, lock: true } : null; }
   if (k === 't') { why = tipoProblems(data); return why.length ? { why: why, lock: true, name: typeof data.name === 'string' ? data.name : '' } : null; }
   if (k === 'c') { why = customProblems(data); return why.length ? { why: why, lock: true, show: true, name: typeof data.n === 'string' ? data.n : '', v: sanitizeCustom(clone(data), true) } : null; }
@@ -944,7 +950,7 @@ function initDb(){
 }
 function fotoUrl(id){ var rt = window.RutinasRuntime; return rt && typeof rt.fotoUrl === 'function' ? rt.fotoUrl(id) : ''; }
 function normLegacy(o, id){ S.legacyRaw[id] = clone(o); return normWeek(o, id); }
-function normFor(kind){ return { d: normDay, w: normLegacy, t: normTipo, p: normPeso, m: normMed, f: normPerfil, c: function(o){ return sanitizeCustom(o, false); }, g: function(o){ return clone(o); } }[kind]; }
+function normFor(kind){ return { d: normDay, w: normLegacy, t: normTipo, p: normPeso, m: normMed, f: normPerfil, c: function(o){ return sanitizeCustom(o, false); }, g: function(o){ return clone(o); }, k: function(o){ return window.Ciclo.normalizar(o); } }[kind]; }
 /* intervalo suscrito de días: un año hacia atrás y un mes hacia delante desde la semana visible y la actual; crece
    al navegar y no se acorta en la sesión. Si el runtime no ofrece consultas, se suscribe la colección completa */
 function rangoPara(ws){
@@ -990,7 +996,7 @@ function startDb(db){
   S.db = db; S.rango = rangoPara(S.ws);
   /* capacidades del runtime, detectadas sin tocar la red: construir una referencia es puro */
   try { var probe = db.doc('dias/1970-01-05'); S.proto.get = typeof probe.get === 'function'; S.proto.acquire = typeof probe.acquire === 'function'; } catch (e) { S.proto.get = false; S.proto.acquire = false; }
-  try { ['d', 't', 'c', 'p', 'm', 'f', 'g'].forEach(function(kind){ subscribeCol(db, kind); }); }
+  try { ['d', 't', 'c', 'p', 'm', 'f', 'g', 'k'].forEach(function(kind){ subscribeCol(db, kind); }); }
   catch (e) { S.db = null; S.dbState = 'off'; render(); return; }
   kickQueue();
 }
@@ -1341,10 +1347,11 @@ function vRow(d, i){
   return '<div class="drow' + (today ? ' today' : '') + '">' + head + '<ul class="rlist">' + items + '</ul><button type="button" class="btn btn-sm" data-a="open-dia" data-i="' + i + '" aria-label="Editar ' + DAYS[i].toLowerCase() + '">Editar</button></div>';
 }
 function vEmptyWeek(){
-  var prev = prevContentWeek(S.ws), nT = tiposList().length;
-  var primary = prev ? 'copy' : (nT ? 'tipos' : 'blank');
+  var prev = prevContentWeek(S.ws), nT = tiposList().length, cc = cicloCfg(), nC = cc.orden.length;
+  var primary = nC >= 2 ? 'ciclo' : prev ? 'copy' : (nT ? 'tipos' : 'blank');
   function opt(key, a, icon, title, sub, disabled){ return '<button type="button" class="option' + (primary === key ? ' primary' : '') + '" data-a="' + a + '"' + (disabled ? ' disabled' : '') + '>' + ic(icon, 22) + '<span class="ot"><b>' + title + '</b><small>' + esc(sub) + '</small></span></button>'; }
   return '<div class="card emptyweek"><div><h2>Esta semana todavía no tiene plan</h2><p>Elige cómo empezar. Después ajustas cada día.</p></div>' +
+    (nC >= 2 ? opt('ciclo', 'new-ciclo', 'cycle', 'Usar el ciclo', cicloResumen(S.ws), false) : '') +
     opt('copy', 'new-copy', 'copy', 'Copiar semana anterior', prev ? weekLabel(prev) + ' · ' + weekMeta(S.weeks[prev]) : 'Todavía no hay semanas guardadas', !prev) +
     opt('tipos', 'new-tipos', 'layers', 'Armar con días tipo', nT ? 'Asignas una plantilla a cada día' : 'Primero crea un día tipo', !nT) +
     opt('blank', 'new-blank', 'plus', 'Empezar en blanco', 'Siete días vacíos para llenar', false) +
@@ -1361,9 +1368,11 @@ function migBanner(ws){
   return '<div class="banner pend" role="status"><span>' + t + '</span><span class="row2"><button type="button" class="btn btn-sm" data-a="open-mig">Migración</button></span></div>';
 }
 function weekFoot(){
-  if (weekKept(S.ws) || weekBlocked(S.ws)) return '';
+  if (weekBlocked(S.ws)) return '';
+  var reorg = cicloCfg().orden.length >= 2 ? '<button type="button" class="linkbtn" data-a="open-reorg">' + ic('cycle', 18) + 'Reorganizar la semana</button>' : '';
+  if (weekKept(S.ws)) return reorg ? '<div class="weekfoot">' + reorg + '</div>' : '';
   if (S.confirm === 'clearweek') return '<div class="confirm" style="margin-top:14px"><p>Se borra todo el plan de ' + weekLabel(S.ws) + '. No se puede deshacer.</p><div class="row2"><button type="button" class="btn btn-danger-solid" data-a="clearweek-ok">Borrar plan</button><button type="button" class="btn" data-a="cancel">Cancelar</button></div></div>';
-  return '<div class="weekfoot"><button type="button" class="linkbtn danger" data-a="clearweek">Borrar plan de esta semana</button></div>';
+  return '<div class="weekfoot">' + reorg + '<button type="button" class="linkbtn danger" data-a="clearweek">Borrar plan de esta semana</button></div>';
 }
 /* series por grupo: lo hecho en el color de acento sobre lo planeado en tono claro, las dos a la misma escala */
 function barsHtml(dn, st, two){
@@ -1656,7 +1665,7 @@ function vTipos(){
   var h = '<div class="pagehead"><div><h1>Días tipo</h1><p>Plantillas para armar la semana más rápido</p></div><button type="button" class="btn btn-primary" data-a="tipo-new">' + ic('plus', 18, 2) + 'Nuevo</button></div>' + vAislados() + pendSlot();
   if (S.dbState === 'loading' && !list.length) return h + '<div class="card loading" role="status">Cargando…</div>';
   if (!list.length) return h + '<div class="card"><p class="hint">Todavía no tienes días tipo. Crea uno aquí o, desde un día de la semana, toca "Guardar como día tipo".</p></div>';
-  return h + '<div class="stack">' + list.map(function(t){
+  return h + cicloCard() + '<div class="stack">' + list.map(function(t){
     var s = dayStats(t), used = w ? DAYS.filter(function(_, i){ return w.days[i].tipo === t.id; }).map(function(x){ return x.toLowerCase(); }) : [];
     return '<button type="button" class="tipocard" data-a="open-tipo" data-id="' + esc(t.id) + '"><span class="tiporow"><span class="tname"><b>' + esc(t.name || 'Sin nombre') + '</b>' + (!s.f && s.c ? '<span class="pill">CARDIO</span>' : '') + (t.ejemplo ? '<span class="pill">Ejemplo</span>' : '') + '</span><small>' + (used.length ? esc(cap(rp)) + ': ' + used.join(', ') : 'Sin usar ' + esc(rp)) + '</small></span><span class="tmeta">' + esc(tipoMeta(t, s)) + '</span>' + (s.groups.length ? '<span class="tags">' + s.groups.map(function(g){ return '<span class="tag sm">' + esc(g) + '</span>'; }).join('') + '</span>' : '') + '</button>';
   }).join('') + '</div>';
@@ -2030,6 +2039,124 @@ function vDatos(t){
     b += '<p class="hint small">Versión de la app: ' + esc(window.RutinasRuntime.version) + '</p>';
   }
   return '<section class="view">' + topbar(t.from || 'Progreso', 'Datos y respaldo') + '<div class="vbody">' + b + '</div></section>';
+}
+/* CICLO DE DÍAS TIPO CON ROTACIÓN (lógica pura en ciclo.js) */
+var CICLO_NOMBRES = ['pierna a', 'torso b', 'pierna b', 'torso a'];
+function normNombre(s){ return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+/* configuración vigente: el documento guardado o, si no hay, un orden deducido de los nombres de los días tipo */
+function cicloCfg(){
+  var doc = S.cicloDocs.principal;
+  if (doc) { var c = window.Ciclo.normalizar(doc); c.orden = c.orden.filter(function(id){ return !!S.tipos[id]; }); return c; }
+  var porNombre = {}; tiposList().forEach(function(t){ var k = normNombre(t.name); if (!porNombre[k]) porNombre[k] = t.id; });
+  return window.Ciclo.normalizar({ orden: CICLO_NOMBRES.map(function(k){ return porNombre[k]; }).filter(Boolean) });
+}
+function cicloEditar(fn){ var c = cicloCfg(); fn(c); S.cicloDocs.principal = c; markKey('k:principal'); render(); }
+function tipoNombre(id){ var t = S.tipos[id]; return t ? (t.name || 'Sin nombre') : 'Día tipo eliminado'; }
+function diaHecho(d){ return !!d && !d.rest && d.items.some(hasLog); }
+/* historial de días con su día tipo y si se hicieron, solo de semanas anteriores a la indicada */
+function cicloHistorial(antesDe){
+  var out = [];
+  Object.keys(S.weeks).forEach(function(ws){ if (ws >= antesDe) return; S.weeks[ws].days.forEach(function(d, i){ if (d.tipo || diaHecho(d)) out.push({ fecha: fechaDe(ws, i), tipo: d.tipo || null, hecho: diaHecho(d) }); }); });
+  return out;
+}
+function cicloPartida(ws){ return window.Ciclo.partida(cicloCfg().orden, cicloHistorial(ws)); }
+function cicloResumen(ws){
+  var c = cicloCfg(), p = cicloPartida(ws);
+  if (!c.orden.length) return 'Define el orden en Días tipo';
+  var arranca = tipoNombre(c.orden[p.idx]);
+  return p.desde ? 'Sigue en ' + arranca + ' (último hecho: ' + tipoNombre(p.desde.tipo) + ', ' + fechaDiaCorta(p.desde.fecha) + ')' : 'Empieza en ' + arranca;
+}
+function fechaDiaCorta(f){ var d = parseIso(f); return DSHORT[wd(f)].toLowerCase() + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
+function cicloElegible(ws, i){ var d = S.weeks[ws] && S.weeks[ws].days[i]; return !(d && diaHecho(d)) && !(dayPast(ws, i) && !isToday(ws, i)); }
+/* días para N sesiones: los por defecto; al reorganizar, N cuenta los ya hechos y solo se eligen días de hoy en adelante */
+function cicloDiasPara(ws, modo, n){
+  var c = cicloCfg(), base = window.Ciclo.diasPara(c, n);
+  if (modo !== 'reorg') return base;
+  var w = S.weeks[ws], hechos = w ? w.days.filter(diaHecho).length : 0, faltan = Math.max(0, n - hechos);
+  var sel = base.filter(function(i){ return cicloElegible(ws, i); }).slice(0, faltan);
+  for (var i = 0; i < 7 && sel.length < faltan; i++) if (sel.indexOf(i) < 0 && cicloElegible(ws, i)) sel.push(i);
+  return sel.sort(function(a, b){ return a - b; });
+}
+function openCiclo(modo){
+  var c = cicloCfg(); if (c.orden.length < 2) { showToast('El ciclo necesita al menos dos días tipo. Defínelo en Días tipo.'); return; }
+  if (weekBlocked(S.ws)) { showToast('Esta semana tiene datos que la app no reconoce; no se puede reorganizar.'); return; }
+  var n = S.cicloN || 4, dias = cicloDiasPara(S.ws, modo, n);
+  push({ v: 'ciclo', ws: S.ws, modo: modo, n: n, dias: dias, from: 'Semana' });
+}
+/* vista previa: qué recibe cada día según el modo */
+function cicloPlan(t){
+  var c = cicloCfg(), p = cicloPartida(t.ws);
+  if (t.modo !== 'reorg') return window.Ciclo.armar(c.orden, p.idx, t.dias);
+  var w = S.weeks[t.ws] || emptyWeek(t.ws);
+  var dias = w.days.map(function(d, i){ return { i: i, tipo: d.tipo || null, hecho: diaHecho(d), pasado: dayPast(t.ws, i) && !isToday(t.ws, i), contenido: hasDayContent(d) && !d.rest }; });
+  return window.Ciclo.reorganizar(c.orden, p.idx, dias, t.dias);
+}
+function vCiclo(t){
+  var c = cicloCfg(), plan = cicloPlan(t), hechos = t.modo === 'reorg' && S.weeks[t.ws] ? S.weeks[t.ws].days.filter(diaHecho).length : 0, nSel = t.dias.length + hechos, p = cicloPartida(t.modo === 'reorg' ? shiftWeek(t.ws, 1) : t.ws);
+  var b = '<div><span class="eyebrow">' + esc(weekLabel(t.ws)) + '</span><h2 class="bigtitle">' + (t.modo === 'reorg' ? '¿Cuántos días caben esta semana?' : '¿Cuántos días entrenas esta semana?') + '</h2></div>';
+  b += '<div class="seg s4" role="group" aria-label="Sesiones">' + [2, 3, 4, 5].map(function(n){ return '<button type="button" data-a="ciclo-n" data-n="' + n + '" aria-pressed="' + (nSel === n) + '">' + n + ' días</button>'; }).join('') + '</div>';
+  b += '<p class="hint small">' + esc(p.desde ? 'El ciclo sigue en ' + tipoNombre(c.orden[p.idx]) + ': el último día hecho fue ' + tipoNombre(p.desde.tipo) + ' el ' + fechaDiaCorta(p.desde.fecha) + '.' : 'El ciclo empieza en ' + tipoNombre(c.orden[0]) + '.') + ' Toca un día para quitarlo o agregarlo.</p>';
+  b += '<div class="daylist">' + plan.dias.map(function(x){
+    var i = x.i, d = S.weeks[t.ws] && S.weeks[t.ws].days[i], eleg = t.modo !== 'reorg' || cicloElegible(t.ws, i), hecho = d && diaHecho(d);
+    var sel = t.dias.indexOf(i) >= 0, numHtml = '<span class="dnum"><small>' + DSHORT[i] + '</small><b>' + dayDate(t.ws, i).getDate() + '</b></span>', txt, pill = '';
+    if (x.accion === 'mantener' && hecho) { txt = tipoNombre(x.tipo); pill = '<span class="pill good">Hecho</span>'; }
+    else if (x.accion === 'tipo' || x.accion === 'mantener') { txt = tipoNombre(x.tipo); if (plan.reemplazados && plan.reemplazados.indexOf(i) >= 0) pill = '<span class="pill">Reemplaza el plan</span>'; }
+    else { txt = 'Descanso'; if (plan.reemplazados && plan.reemplazados.indexOf(i) >= 0) pill = '<span class="pill">Quita el plan</span>'; }
+    return '<button type="button" class="daycard' + (x.accion === 'descanso' ? ' muted' : '') + '" data-a="ciclo-dia" data-i="' + i + '" aria-pressed="' + sel + '"' + (eleg ? '' : ' disabled') + '>' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(txt) + '</span>' + pill + '</span></span>' + (eleg ? '<span class="chev">' + ic(sel ? 'check' : 'plus', 18, 2) + '</span>' : '') + '</button>';
+  }).join('') + '</div>';
+  var aviso = plan.reemplazados && plan.reemplazados.length ? '<p class="hint small">Se reemplaza el plan de ' + plan.reemplazados.map(function(i){ return DAYS[i].toLowerCase(); }).join(', ') + '. Los días con series anotadas no se tocan.</p>' : '';
+  var foot = '<div class="vfoot"><div class="footinfo"><b>' + nSel + (nSel === 1 ? ' sesión' : ' sesiones') + (hechos ? ' (' + hechos + (hechos === 1 ? ' hecha)' : ' hechas)') : '') + '</b><small>' + esc(c.orden.map(tipoNombre).join(' → ')) + '</small></div><button type="button" class="btn btn-primary" data-a="ciclo-ok"' + (t.dias.length ? '' : ' disabled') + '>' + (t.modo === 'reorg' ? 'Reorganizar' : 'Armar semana') + '</button></div>';
+  return '<section class="view">' + topbar(t.from || 'Semana', viewTitle(t)) + '<div class="vbody">' + b + aviso + '</div>' + foot + '</section>';
+}
+function aplicarPlanCiclo(ws, plan, modo){
+  if (weekBlocked(ws)) return false;
+  if (!S.weeks[ws]) { S.weeks[ws] = emptyWeek(ws); S.weeks[ws]._local = true; }
+  plan.dias.forEach(function(x){
+    var ctx = { kind: 'day', ws: ws, i: x.i }, day = getCont(ctx); if (!day) return;
+    if (x.accion === 'mantener') return;
+    if (x.accion === 'tipo') { loadTipo(ctx, x.tipo); return; }
+    if (hasDayContent(day) && !day.rest) { day.rest = true; day.items = []; day.tipo = null; day.name = ''; markDirty(ctx); }
+    else if (!day.rest && modo !== 'reorg') { day.rest = true; markDirty(ctx); }
+  });
+  return true;
+}
+function aplicarCiclo(t){
+  if (!aplicarPlanCiclo(t.ws, cicloPlan(t), t.modo)) return;
+  S.cicloN = t.dias.length;
+  pop();
+  showToast(t.modo === 'reorg' ? 'Semana reorganizada con el ciclo.' : 'Semana armada con el ciclo. Ajusta cada día si hace falta.');
+}
+/* semana nueva automática: mismos días de la semana que la anterior, con el ciclo siguiendo donde quedó */
+function autoFillCiclo(src, ws){
+  var c = cicloCfg(); if (c.orden.length < 2) return false;
+  var dias = S.weeks[src].days.map(function(d, i){ return !d.rest && d.items.some(function(it){ return !isCardio(it); }) ? i : -1; }).filter(function(i){ return i >= 0; });
+  if (!dias.length) return false;
+  var p = cicloPartida(ws), plan = window.Ciclo.armar(c.orden, p.idx, dias);
+  if (!aplicarPlanCiclo(ws, plan, 'armar')) return false;
+  showToast('Semana armada con el ciclo: sigue en ' + tipoNombre(c.orden[p.idx]) + '. Toca Reorganizar si cambia el número de días.', function(){ clearWeekLocal(ws); });
+  return true;
+}
+function cicloCard(){
+  var c = cicloCfg();
+  var txt = c.orden.length ? c.orden.map(tipoNombre).join(' → ') : 'Sin definir: elige el orden de tus días tipo';
+  return '<button type="button" class="profrow" data-a="open-ciclocfg"><span class="pt"><span class="eyebrow">Ciclo</span><span>' + esc(txt) + '</span></span><span class="dcta">Editar</span></button>';
+}
+function vCicloCfg(){
+  var c = cicloCfg(), fuera = tiposList().filter(function(t){ return c.orden.indexOf(t.id) < 0; });
+  var b = '<p class="hint small">El ciclo es el orden en que se encadenan tus días tipo. No se reinicia cada semana: la semana nueva sigue donde quedó el último día que hiciste, así lo que se cae nunca se salta.</p>';
+  b += '<div class="sechead"><h2>Orden</h2><span>' + c.orden.length + (c.orden.length === 1 ? ' día tipo' : ' días tipo') + '</span></div>';
+  b += c.orden.length ? '<div class="exlist">' + c.orden.map(function(id, i){
+    return '<div class="excard"><div class="exhead"><span class="gtag">' + (i + 1) + '</span><span class="exname"><b>' + esc(tipoNombre(id)) + '</b></span>' +
+      '<button type="button" class="iconbtn" data-a="cc-mover" data-i="' + i + '" data-dir="-1" aria-label="Subir"' + (i === 0 ? ' disabled' : '') + '>' + ic('up', 18, 2) + '</button>' +
+      '<button type="button" class="iconbtn" data-a="cc-mover" data-i="' + i + '" data-dir="1" aria-label="Bajar"' + (i === c.orden.length - 1 ? ' disabled' : '') + '>' + ic('down', 18, 2) + '</button>' +
+      '<button type="button" class="iconbtn" data-a="cc-quitar" data-i="' + i + '" aria-label="Quitar del ciclo">' + ic('x', 18, 2) + '</button></div></div>';
+  }).join('') + '</div>' : '<div class="card"><p class="hint">Todavía no hay días tipo en el ciclo.</p></div>';
+  if (fuera.length) b += '<div class="sechead"><h2>Agregar al ciclo</h2></div><div class="optlist">' + fuera.map(function(t){ return '<button type="button" class="option" data-a="cc-agregar" data-id="' + esc(t.id) + '">' + ic('plus', 22) + '<span class="ot"><b>' + esc(t.name || 'Sin nombre') + '</b><small>' + esc(tipoMeta(t, dayStats(t))) + '</small></span></button>'; }).join('') + '</div>';
+  b += '<div class="sechead"><h2>Días por defecto</h2><span>Se pueden cambiar en cada semana</span></div><div class="card" style="display:flex;flex-direction:column;gap:12px">' + [2, 3, 4, 5].map(function(n){
+    var sel = c.dias[n];
+    return '<div class="field"><span class="lbl">' + n + ' sesiones</span><div class="chips wrap" role="group">' + DSHORT.map(function(ds, i){ return '<button type="button" class="chip" data-a="cc-dia" data-n="' + n + '" data-i="' + i + '" aria-pressed="' + (sel.indexOf(i) >= 0) + '">' + ds + '</button>'; }).join('') + '</div>' + (sel.length !== n ? '<p class="err">Marca ' + n + ' días (hay ' + sel.length + ').</p>' : '') + '</div>';
+  }).join('') + '</div>';
+  return '<section class="view">' + topbar('Días tipo', 'Ciclo') + '<div class="vbody">' + b + '</div></section>';
 }
 function vProgreso(){
   var h = '<div class="pagehead"><div><h1>Progreso</h1><p>Peso lunes, miércoles y viernes. Medidas cada 2 a 4 semanas.</p></div></div>';
@@ -2460,10 +2587,12 @@ function vView(t){
     case 'cola': return vCola();
     case 'migracion': return vMigracion(t);
     case 'datos': return vDatos(t);
+    case 'ciclo': return vCiclo(t);
+    case 'ciclocfg': return vCicloCfg(t);
   }
   return '';
 }
-function viewTitle(t){ return { dia: 'Editar día', tipo: 'Editar día tipo', lib: 'Agregar ejercicio', det: 'Ejercicio', resumen: 'Resumen', cargar: 'Cargar día tipo', asignar: 'Armar con días tipo', crear: 'Ejercicio', swap: 'Cambiar ejercicio', hist: 'Historial', peso: 'Registrar peso', medidas: 'Medidas', perfil: 'Perfil', migracion: 'Migración a días independientes', cola: 'Cambios pendientes', datos: 'Datos y respaldo' }[t.v] || ''; }
+function viewTitle(t){ return { dia: 'Editar día', tipo: 'Editar día tipo', lib: 'Agregar ejercicio', det: 'Ejercicio', resumen: 'Resumen', cargar: 'Cargar día tipo', asignar: 'Armar con días tipo', crear: 'Ejercicio', swap: 'Cambiar ejercicio', hist: 'Historial', peso: 'Registrar peso', medidas: 'Medidas', perfil: 'Perfil', migracion: 'Migración a días independientes', cola: 'Cambios pendientes', datos: 'Datos y respaldo', ciclo: t.modo === 'reorg' ? 'Reorganizar la semana' : 'Armar con el ciclo', ciclocfg: 'Ciclo' }[t.v] || ''; }
 var detTimer = null;
 function render(opts){
   opts = opts || {};
@@ -2623,6 +2752,7 @@ function autoFill(ws){
   for (var i = 0; i < 7; i++) { var f = fechaDe(ws, i); if (S.ddocs[f] || dirty['d:' + f] || S.aislados['dias/' + f]) return; }
   var src = prevContentWeek(ws); if (!src) return;
   autoTried[ws] = true;
+  if (autoFillCiclo(src, ws)) return;
   copyFromTipos(src, ws);
   showToast('Semana armada como la del ' + weekLabel(src) + ', con tus días tipo', function(){ clearWeekLocal(ws); });
 }
@@ -2782,6 +2912,16 @@ document.addEventListener('click', function(e){
     case 'med-save': saveMedidas(); break;
     case 'open-perfil': openPerfil(); break;
     case 'open-datos': openDatos(); break;
+    case 'new-ciclo': openCiclo('armar'); break;
+    case 'open-reorg': openCiclo('reorg'); break;
+    case 'ciclo-n': t.dias = cicloDiasPara(t.ws, t.modo, +d.n); render(); break;
+    case 'ciclo-dia': var cdi = +d.i, cpos = t.dias.indexOf(cdi); if (cpos >= 0) t.dias.splice(cpos, 1); else t.dias.push(cdi); t.dias.sort(function(a, b){ return a - b; }); render(); break;
+    case 'ciclo-ok': aplicarCiclo(t); break;
+    case 'open-ciclocfg': push({ v: 'ciclocfg' }); break;
+    case 'cc-mover': cicloEditar(function(c){ c.orden = window.Ciclo.mover(c.orden, +d.i, +d.dir); }); break;
+    case 'cc-quitar': cicloEditar(function(c){ c.orden.splice(+d.i, 1); }); break;
+    case 'cc-agregar': cicloEditar(function(c){ if (c.orden.indexOf(d.id) < 0) c.orden.push(d.id); }); break;
+    case 'cc-dia': cicloEditar(function(c){ var n = +d.n, i = +d.i, arr = c.dias[n].slice(), q = arr.indexOf(i); if (q >= 0) { if (arr.length > 1) arr.splice(q, 1); } else arr.push(i); arr.sort(function(a, b){ return a - b; }); c.dias[n] = arr; if (arr.length !== n) c.dias[n] = arr; }); break;
     case 'resp-crear': respaldoCrear(); break;
     case 'resp-restaurar-ok': respaldoRestaurar(); break;
     case 'resp-cancel': S.confirm = null; if (S.dform) { S.dform.insp = null; S.dform.err = ''; } render(); break;

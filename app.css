@@ -97,7 +97,7 @@ textarea.inp[readonly]{font-family:ui-monospace,Menlo,Consolas,monospace;font-si
 .dmeta{font-size:12px;line-height:1.35;color:var(--muted);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .dcta{font-size:13px;font-weight:700;color:var(--accent)}
 .chev{color:var(--muted);flex-shrink:0;display:inline-flex}
-.weekfoot{display:flex;justify-content:center;padding:14px 0 0}
+.weekfoot{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 20px;padding:14px 0 0}
 
 /* semana vacía */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 16px}
@@ -270,6 +270,9 @@ textarea.inp{height:auto;min-height:120px;padding:10px 12px;line-height:1.45;res
 .search input:focus{outline:none}
 .seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;border-radius:12px;background:var(--fill)}
 .seg.s3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.seg.s4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.daycard[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.daycard:disabled{opacity:.6;cursor:default}
 .seg button{height:40px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:14px;font-weight:700}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.14)}
 .chips{display:flex;gap:6px;overflow-x:auto;margin:0 -16px;padding:0 16px 2px;scrollbar-width:none}

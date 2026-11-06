@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node tools/build-sw.js",
     "servir": "node tools/servir.js 8765 /mis-rutinas",
-    "test": "node tests/runtime.test.js",
+    "test": "node tests/runtime.test.js && node tests/ciclo.test.js",
     "e2e": "node tests/e2e.js"
   },
   "devDependencies": {
