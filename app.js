@@ -1261,12 +1261,12 @@ function vMigracion(){
   return '<section class="view">' + topbar('Atrás', 'Migración a días independientes') + '<div class="vbody">' + pendSlot() + b + '</div></section>';
 }
 function migDownload(){ try { var blob = new Blob([migActa()], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = 'migracion-' + todayIso() + '.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000); } catch (x) { showToast('No se pudo descargar; copia el texto del acta.'); } }
-function showToast(msg, undo){
-  var id = uid(); S.toast = { msg: msg, undo: undo || null, id: id };
+function showToast(msg, undo, etiqueta, fijo){
+  var id = uid(); S.toast = { msg: msg, undo: undo || null, id: id, etiqueta: etiqueta || 'Deshacer' };
   renderToast();
-  setTimeout(function(){ if (S.toast && S.toast.id === id) { S.toast = null; renderToast(); } }, undo ? 6000 : 4500);
+  if (!fijo) setTimeout(function(){ if (S.toast && S.toast.id === id) { S.toast = null; renderToast(); } }, undo ? 6000 : 4500);
 }
-function vToast(){ if (!S.toast) return ''; return '<div class="toast" role="status"><span>' + esc(S.toast.msg) + '</span>' + (S.toast.undo ? '<button type="button" data-a="undo">Deshacer</button>' : '') + '</div>'; }
+function vToast(){ if (!S.toast) return ''; return '<div class="toast" role="status"><span>' + esc(S.toast.msg) + '</span>' + (S.toast.undo ? '<button type="button" data-a="undo">' + esc(S.toast.etiqueta) + '</button>' : '') + '</div>'; }
 function renderToast(){ var o = document.querySelector('.toast'); if (o) o.remove(); if (S.toast) (document.querySelector('.drawer') || document.getElementById('app')).insertAdjacentHTML('beforeend', vToast()); }
 
 /* vistas: navegación */
@@ -3164,11 +3164,17 @@ window.addEventListener('online', kickQueue);
 /* service worker: la app completa queda en caché para funcionar sin conexión; una versión nueva se aplica al volver a abrir */
 function registrarSw(){
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  var habiaControl = !!navigator.serviceWorker.controller, recargando = false;
+  /* cuando el service worker nuevo toma el control, la app ofrece recargar; si no hay nada sin guardar, recarga sola */
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if (!habiaControl || recargando) return;
+    recargando = true;
+    if (!Object.keys(dirty).length && !Object.keys(S.cola).length && !S.stack.length) { location.reload(); return; }
+    showToast('Versión nueva lista.', function(){ location.reload(); }, 'Actualizar', true);
+  });
   navigator.serviceWorker.register('sw.js').then(function(reg){
-    reg.addEventListener('updatefound', function(){
-      var nuevo = reg.installing; if (!nuevo) return;
-      nuevo.addEventListener('statechange', function(){ if (nuevo.state === 'installed' && navigator.serviceWorker.controller) showToast('Hay una versión nueva de la app. Se aplica la próxima vez que la abras.'); });
-    });
+    /* buscar actualizaciones cada vez que la app vuelve al frente, no solo al abrirla */
+    document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') reg.update().catch(function(){}); });
   }).catch(function(){});
 }
 
