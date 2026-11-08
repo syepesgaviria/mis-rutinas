@@ -18,7 +18,7 @@ Los datos viven solo en el teléfono. En Progreso, Datos y respaldo, "Guardar re
 - `runtime.js`: capa de datos local en IndexedDB (colecciones, fotos, respaldo y restauración).
 - `ciclo.js`: lógica pura del ciclo de días tipo con rotación (partida, armar semana, reorganizar) y de la semana de descarga (racha, series reducidas).
 - `progresion.js`: lógica pura de progresión de cargas (cargas posibles con los discos, siguiente carga por equipo, evaluación de la última sesión, corrección de cargas cuando un peso estaba mal medido).
-- `cronometro.js`: cronómetro de descanso (cuenta por hora de fin, barra propia, sonido, pantalla encendida).
+- `cronometro.js`: cronómetro de descanso (cuenta por hora de fin, barra propia, descanso reproducido como pista de audio para que avise con el teléfono bloqueado y se vea en la pantalla de bloqueo, pantalla encendida).
 - `sw.js`: service worker generado; precachea la app completa para usarla sin conexión.
 - `img/`: fotos del catálogo (Free Exercise DB, dominio público) y dos ilustraciones esquemáticas.
 - `fonts/`: Archivo (SIL Open Font License), empaquetada para funcionar sin conexión.

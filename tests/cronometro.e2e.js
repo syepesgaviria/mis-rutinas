@@ -24,7 +24,17 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
   ok(botones.length >= 3, 'cada ejercicio de fuerza tiene su botón de descanso: ' + botones.join(', '));
   const grupo = await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.excard')).find(x => x.querySelector('.glab, .gtag') || x.classList.contains('ing')); return c ? { rest: c.closest('.exlist') && (c.closest('.exlist').querySelector('[data-f="grest"]') || {}).value, btn: (c.querySelector('.restbtn') || {}).textContent } : null; });
   ok(grupo && grupo.btn && grupo.rest && grupo.btn.trim() === grupo.rest.trim(), 'un ejercicio en superserie usa el descanso del grupo (' + JSON.stringify(grupo) + ')');
-  await page.locator('.restbtn').first().click(); await page.waitForTimeout(400);
+  // el encabezado del grupo también tiene un botón grande "Iniciar" al lado del descanso
+  const gstart = page.locator('.grphead .restbtn.gstart').first();
+  ok(await gstart.count() === 1 && /Iniciar/.test(await gstart.innerText()), 'el encabezado del grupo tiene el botón Iniciar');
+  await gstart.click(); await page.waitForTimeout(400);
+  const etq = await page.locator('#cronometro .ctxt small').innerText();
+  ok(/serie [A-F]/i.test(etq), 'desde el grupo el cronómetro lleva el nombre del grupo: ' + etq);
+  const pista = await page.evaluate(() => { const e = window.Cronometro._estado; return { ok: e.pistaOk, tipo: e.pista && e.pista.tagName, dur: e.pista && e.pista.duration, pausado: e.pista && e.pista.paused, ms: navigator.mediaSession && navigator.mediaSession.metadata && navigator.mediaSession.metadata.title }; });
+  ok(pista.ok && pista.tipo === 'AUDIO' && pista.pausado === false, 'el descanso suena como pista de audio: ' + JSON.stringify(pista));
+  await page.click('#cronometro [data-c="saltar"]'); await page.waitForTimeout(300);
+  ok(await page.locator('#cronometro:not([hidden])').count() === 0 && await page.evaluate(() => !window.Cronometro._estado.pista), 'saltar cierra la barra y para la pista');
+  await page.locator('.restbtn:not(.gstart)').first().click(); await page.waitForTimeout(400);
   ok(await page.locator('#cronometro:not([hidden])').count() === 1, 'al tocar aparece la barra del cronómetro');
   const t1 = await page.locator('#cronometro .ctxt b').innerText();
   await page.screenshot({ path: path.join(SALIDA, 't1-cronometro.png') });

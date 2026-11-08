@@ -2470,10 +2470,11 @@ function grpSel(it){
 }
 function grpHead(run, g, n0){
   var n = run.length, rondas = Math.max.apply(null, run.map(function(x){ return setsN(x); })) || 0, ge = esc(g);
-  var rest = (run.filter(function(x){ return x.rest; }).pop() || {}).rest || '', id = 'gr-' + n0;
+  var rest = (run.filter(function(x){ return x.rest; }).pop() || {}).rest || '', id = 'gr-' + n0, rsec = window.Cronometro ? window.Cronometro.parse(rest) : null;
   var sub = n > 1 ? (rondas ? rondas + ' rondas. ' : '') + 'Una serie de cada ejercicio seguidas y luego descansas.' : 'Asigna otro ejercicio a la letra ' + ge + ' para alternarlos.';
   return '<div class="grphead"><span class="gtag" aria-hidden="true">' + ge + '</span><span class="gtt"><b>' + grpName(n) + ' ' + ge + '</b><small>' + sub + '</small></span>' +
-    '<div class="fld grest"><label for="' + id + '">Descanso</label><input id="' + id + '" class="inp num" data-f="grest" data-g="' + ge + '" data-k0="' + esc(run[0].k) + '" value="' + esc(rest) + '" autocomplete="off" placeholder="1:30"></div></div>';
+    '<div class="fld grest"><label for="' + id + '">Descanso</label><input id="' + id + '" class="inp num" data-f="grest" data-g="' + ge + '" data-k0="' + esc(run[0].k) + '" value="' + esc(rest) + '" autocomplete="off" placeholder="1:30"></div>' +
+    (rsec ? '<button type="button" class="restbtn gstart" data-a="timer-start" data-s="' + rsec + '" data-l="' + esc(grpName(n) + ' ' + g) + '" aria-label="Iniciar descanso de ' + esc(window.Cronometro.fmt(rsec)) + '">' + ic('timer', 16, 2) + 'Iniciar</button>' : '') + '</div>';
 }
 function strengthBlocks(items, logDate, planDate, ctx){
   var labs = groupLabels(items), out = '', i = 0, n0 = 0;

@@ -205,6 +205,8 @@ textarea.inp{height:auto;min-height:120px;padding:10px 12px;line-height:1.45;res
 .gtt small{font-size:12px;line-height:1.35;color:var(--muted)}
 .grest{width:78px;flex-shrink:0}
 .grest .inp{background:var(--surface)}
+.restbtn.gstart{height:44px;padding:0 12px;background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-size:14px;flex-shrink:0;align-self:center;margin-top:18px}
+@media (max-width:380px){.restbtn.gstart{padding:0 10px}}
 .excard.ing{border-left:4px solid var(--accent)}
 .glab{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 5px;margin-right:6px;border-radius:6px;background:var(--accent-tint);color:var(--accent-strong);font-size:11px;font-weight:800;vertical-align:2px}
 .sugbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 10px;padding:8px 10px;border-radius:10px;background:var(--accent-tint);color:var(--accent-strong);font-size:13px;line-height:1.35}
