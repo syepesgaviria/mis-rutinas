@@ -21,7 +21,7 @@ function normalizar(doc){
     dias[n] = d && d.length === n ? d : DIAS_POR_DEFECTO[n].slice();
   }
   var equipo = o.equipo && typeof o.equipo === 'object' ? JSON.parse(JSON.stringify(o.equipo)) : {};
-  var extra = {}; ['bloque'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
+  var extra = {}; ['bloque', 'correcciones'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
   var dc = parseInt(o.descargaCada, 10); extra.descargaCada = dc >= 2 && dc <= 20 ? dc : 6;
   var df = parseFloat(o.factorDescarga); extra.factorDescarga = df >= 0.3 && df <= 0.9 ? Math.round(df * 100) / 100 : 0.6;
   var out = { orden: orden, dias: dias, equipo: equipo };

@@ -4,8 +4,8 @@
 (function(){
 'use strict';
 
-/* equipo por defecto: la barra y los discos de Santiago, mancuernas de 2,5 en 2,5 hasta 25, polea de 2,5 en 2,5 */
-var EQUIPO = { barra: 20, barraEz: 10, discos: [5, 6.8, 10, 15.9], pasoMancuerna: 2.5, mancuernaMax: 25, pasoPolea: 2.5 };
+/* equipo por defecto: la barra y los discos de Santiago, mancuernas de 2,5 en 2,5 hasta 25, polea de 2 en 2 */
+var EQUIPO = { barra: 15, barraEz: 10, discos: [5, 6.8, 10, 15.9], pasoMancuerna: 2.5, mancuernaMax: 25, pasoPolea: 2 };
 
 function numOk(v, min){ var n = typeof v === 'number' ? v : parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) && n >= (min == null ? 0 : min) ? Math.round(n * 100) / 100 : null; }
 function normalizarEquipo(o){
@@ -62,9 +62,20 @@ function evaluar(L, top, needSets){
   return { estado: !full ? 'incompleto' : !uni ? 'distintos' : !reached ? 'mantener' : 'sube', need: need, w0: w0, hechas: L.sets.length };
 }
 
+/* corrección de cargas: suma delta (negativo para restar) al peso planeado, a cada serie anotada con peso propio y a la
+   propuesta guardada. fmt escribe el número como lo guarda la app. Devuelve cuántos valores cambió */
+function corregirItem(it, delta, fmt){
+  var n = 0, num = function(v){ var x = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(x) ? x : null; };
+  var ajustar = function(v){ var x = num(v); if (x == null || x <= 0) return null; return fmt(Math.max(0, Math.round((x + delta) * 10) / 10)); };
+  var kg = ajustar(it.kg); if (kg != null) { it.kg = kg; n++; }
+  if (it.hk) { var partes = String(it.hk).split('|').map(function(v){ var a = String(v).trim() === '' ? null : ajustar(v); if (a != null) { n++; return a; } return v; }); it.hk = partes.join('|'); }
+  var sg = leerSug(it.sug); if (sg) { it.sug = escribirSug(Math.max(0, sg.de + delta), Math.max(0, sg.a + delta)); n++; }
+  return n;
+}
+
 /* texto corto de una propuesta guardada en el ítem: "20>22.5" → { de: 20, a: 22.5 } */
 function leerSug(s){ var m = String(s || '').split('>'); if (m.length !== 2) return null; var de = parseFloat(m[0]), a = parseFloat(m[1]); return isFinite(de) && isFinite(a) ? { de: de, a: a } : null; }
 function escribirSug(de, a){ return String(r1(de)) + '>' + String(r1(a)); }
 
-window.Progresion = { EQUIPO: EQUIPO, normalizarEquipo: normalizarEquipo, cargasBarra: cargasBarra, siguiente: siguiente, evaluar: evaluar, leerSug: leerSug, escribirSug: escribirSug };
+window.Progresion = { EQUIPO: EQUIPO, normalizarEquipo: normalizarEquipo, cargasBarra: cargasBarra, siguiente: siguiente, evaluar: evaluar, leerSug: leerSug, escribirSug: escribirSug, corregirItem: corregirItem };
 })();

@@ -40,7 +40,8 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
 
   // con descarga cada 2 semanas aparece el aviso
   await page.click('.bottomnav [data-t="tipos"]'); await page.click('[data-a="open-ciclocfg"]'); await page.waitForSelector('[data-f="equipo"][data-p="descargaCada"]');
-  await page.fill('[data-f="equipo"][data-p="descargaCada"]', '2'); await page.dispatchEvent('[data-f="equipo"][data-p="descargaCada"]', 'change'); await page.waitForTimeout(500);
+  await page.fill('[data-f="equipo"][data-p="descargaCada"]', '2'); await page.dispatchEvent('[data-f="equipo"][data-p="descargaCada"]', 'change');
+  await page.waitForFunction(() => { const c = window.RutinasRuntime._pruebas.estado.cols.ciclo.principal; return c && c.descargaCada === 2; }, null, { timeout: 5000 }).catch(() => {});
   const cfg = await page.evaluate(() => window.RutinasRuntime._pruebas.estado.cols.ciclo.principal);
   ok(cfg && cfg.descargaCada === 2 && cfg.factorDescarga === 0.6, 'el ajuste se guarda en el documento del ciclo');
   await page.click('[data-a="back"]'); await page.click('.bottomnav [data-t="semana"]'); await page.waitForTimeout(300);

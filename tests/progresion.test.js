@@ -13,16 +13,18 @@ prueba('las cargas de la barra salen de combinar un par de cada disco', () => {
   const c = P.cargasBarra(20, [5, 6.8, 10, 15.9]);
   assert.deepStrictEqual(c.slice(0, 6), [20, 30, 33.6, 40, 43.6, 50]);
   assert.strictEqual(c[c.length - 1], 95.4, 'todos los discos: 20 + 2 × 37,7');
+  assert.deepStrictEqual(P.cargasBarra(15, [5, 6.8, 10, 15.9]).slice(0, 4), [15, 25, 28.6, 35]);
   assert.strictEqual(c.length, 16, '2^4 combinaciones, sin repetidos');
   assert.deepStrictEqual(P.cargasBarra(20, []), [20]);
 });
 
 prueba('siguiente carga con barra: la siguiente que se puede armar, no un paso fijo', () => {
-  assert.strictEqual(P.siguiente('barra', 40, {}), 43.6);
-  assert.strictEqual(P.siguiente('barra', 43.6, {}), 50);
-  assert.strictEqual(P.siguiente('barra', 20, {}), 30);
-  assert.strictEqual(P.siguiente('barra', 0, {}), 20, 'sin carga anotada propone la barra sola');
-  assert.strictEqual(P.siguiente('barra', 95.4, {}), null, 'con todos los discos no hay siguiente');
+  assert.strictEqual(P.siguiente('barra', 40, { barra: 20 }), 43.6);
+  assert.strictEqual(P.siguiente('barra', 43.6, { barra: 20 }), 50);
+  assert.strictEqual(P.siguiente('barra', 20, { barra: 20 }), 30);
+  assert.strictEqual(P.siguiente('barra', 0, { barra: 20 }), 20, 'sin carga anotada propone la barra sola');
+  assert.strictEqual(P.siguiente('barra', 95.4, { barra: 20 }), null, 'con todos los discos no hay siguiente');
+  assert.strictEqual(P.siguiente('barra', 45, {}), 46.8, 'con la barra real de 15: 15, 25, 28.6, 35, 38.6, 45, 46.8 (15 + 2 × 15,9)');
   assert.strictEqual(P.siguiente('barraez', 10, {}), 20, 'la barra EZ usa su propio peso');
   assert.strictEqual(P.siguiente('barra', 40, { barra: 15 }), 45, 'con barra de 15 las cargas son 15, 25, 28.6, 35, 38.6, 45...: por encima de 40 viene 45');
 });
@@ -36,7 +38,7 @@ prueba('mancuernas suben de 2,5 por mancuerna y se detienen en la más pesada', 
 });
 
 prueba('polea, kettlebell y peso corporal', () => {
-  assert.strictEqual(P.siguiente('polea', 30, {}), 32.5);
+  assert.strictEqual(P.siguiente('polea', 30, {}), 32, 'la torre va de 2 en 2');
   assert.strictEqual(P.siguiente('polea', 30, { pasoPolea: 5 }), 35);
   assert.strictEqual(P.siguiente('kettlebell', 16, {}), 20);
   assert.strictEqual(P.siguiente('corporal', 0, {}), null, 'sin lastre no hay número');
@@ -48,6 +50,7 @@ prueba('normalizarEquipo completa y limpia', () => {
   const e = P.normalizarEquipo({ barra: '15', discos: ['5', 'x', 2.5], pasoMancuerna: 0 });
   assert.strictEqual(e.barra, 15); assert.deepStrictEqual(e.discos, [2.5, 5]); assert.strictEqual(e.pasoMancuerna, 2.5);
   assert.deepStrictEqual(P.normalizarEquipo(null), P.EQUIPO);
+  assert.strictEqual(P.EQUIPO.barra, 15); assert.strictEqual(P.EQUIPO.pasoPolea, 2);
 });
 
 prueba('evaluar: sube solo con todas las series anotadas, mismo peso y todas al tope', () => {
@@ -73,6 +76,16 @@ prueba('la propuesta se guarda como texto y se lee de vuelta', () => {
   assert.strictEqual(P.escribirSug(40, 43.6), '40>43.6');
   assert.deepStrictEqual(P.leerSug('40>43.6'), { de: 40, a: 43.6 });
   assert.strictEqual(P.leerSug('basura'), null);
+});
+
+prueba('corregirItem resta a lo planeado, a cada serie con peso propio y a la propuesta', () => {
+  const fmt = x => String(x).replace('.', ',');
+  const it = { kg: '50', hk: '50||45|', hr: '12,12,12', sug: '50>53.6' };
+  const n = P.corregirItem(it, -5, fmt);
+  assert.deepStrictEqual(it, { kg: '45', hk: '45||40|', hr: '12,12,12', sug: '45>48.6' });
+  assert.strictEqual(n, 4);
+  const vacio = { kg: '', hk: '' }; assert.strictEqual(P.corregirItem(vacio, -5, fmt), 0); assert.strictEqual(vacio.kg, '');
+  const bajo = { kg: '3' }; P.corregirItem(bajo, -5, fmt); assert.strictEqual(bajo.kg, '0', 'nunca queda negativo');
 });
 
 console.log(n + ' pruebas pasadas' + (process.exitCode ? ', con fallos' : ''));

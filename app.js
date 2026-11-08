@@ -344,7 +344,7 @@ function buildOp(key, now){
   if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
-  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; return { op: 'set', body: bk }; }
+  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; if (Array.isArray(nk.correcciones)) bk.correcciones = nk.correcciones.slice(-20); return { op: 'set', body: bk }; }
   if (kind === 'f') { var pf = S.perfilDocs[id]; if (!pf) throw new Error('perfil ausente'); return { op: 'set', body: { estatura: pf.estatura, nacimiento: pf.nacimiento || pf._nac0 || '', sexo: pf.sexo === 'M' ? 'M' : 'H', updatedAt: now } }; }
   var c = S.custom[id]; if (!c) throw new Error('ejercicio ausente'); return { op: 'set', body: serCustom(c, now) };
 }
@@ -2184,6 +2184,38 @@ function cicloCard(){
   var txt = c.orden.length ? c.orden.map(tipoNombre).join(' → ') : 'Sin definir: elige el orden de tus días tipo';
   return '<button type="button" class="profrow" data-a="open-ciclocfg"><span class="pt"><span class="eyebrow">Ciclo</span><span>' + esc(txt) + '</span></span><span class="dcta">Editar</span></button>';
 }
+/* CORRECCIÓN DE CARGAS: cuando un peso estaba mal medido (la barra pesa 15 y no 20), se aplica la diferencia a todo lo
+   que usa ese equipo: pesos planeados, series anotadas y propuestas, en días tipo y en todas las semanas */
+var CORR_MODOS = { barra: ['barra'], barraez: ['barraez'], mancuernas: ['dos', 'una'], polea: ['polea'] };
+var CORR_NOMBRES = { barra: 'Barra', barraez: 'Barra EZ', mancuernas: 'Mancuernas', polea: 'Polea' };
+function corrAplica(it, modo){ if (isCardio(it)) return false; var m = modalidadDe(exById(it.ex)); return (CORR_MODOS[modo] || []).indexOf(m) >= 0; }
+function corrResumen(modo){
+  var r = { tipos: 0, exTipos: 0, dias: 0, exDias: 0, series: 0 };
+  Object.keys(S.tipos).forEach(function(id){ var n = S.tipos[id].items.filter(function(it){ return corrAplica(it, modo); }).length; if (n) { r.tipos++; r.exTipos += n; } });
+  Object.keys(S.weeks).forEach(function(ws){ if (weekBlocked(ws)) return; S.weeks[ws].days.forEach(function(d){ var its = d.items.filter(function(it){ return corrAplica(it, modo); }); if (its.length) { r.dias++; r.exDias += its.length; its.forEach(function(it){ r.series += kgRaw(it).filter(function(v){ return String(v).trim() !== ''; }).length; }); } }); });
+  return r;
+}
+function corrAplicar(modo, delta){
+  var n = 0, r = corrResumen(modo);
+  Object.keys(S.tipos).forEach(function(id){ var t = S.tipos[id], c = 0; t.items.forEach(function(it){ if (corrAplica(it, modo)) c += window.Progresion.corregirItem(it, delta, fmtKg); }); if (c) { n += c; markKey('t:' + id); } });
+  Object.keys(S.weeks).forEach(function(ws){ if (weekBlocked(ws)) return; S.weeks[ws].days.forEach(function(d, i){ var c = 0; d.items.forEach(function(it){ if (corrAplica(it, modo)) c += window.Progresion.corregirItem(it, delta, fmtKg); }); if (c) { n += c; markDirty({ kind: 'day', ws: ws, i: i }); } }); });
+  var cfg = cicloCfg(); cfg.correcciones = (cfg.correcciones || []).concat([{ fecha: new Date().toISOString().slice(0, 10), modo: modo, delta: delta, dias: r.dias, tipos: r.tipos, valores: n }]);
+  S.cicloDocs.principal = cfg; markKey('k:principal');
+  return n;
+}
+function vCorreccion(c){
+  var f = S.corr || { modo: 'barra', delta: '-5' }, b = '<div class="sechead"><h2>Corrección de cargas</h2></div>';
+  b += '<p class="hint small">Si un peso estaba mal medido (la barra pesa 15 kg y no 20), aplica la diferencia de una vez a todo lo que usa ese equipo: pesos planeados, series anotadas y propuestas, en los días tipo y en todas las semanas. No se puede deshacer: guarda un respaldo antes.</p>';
+  b += '<div class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="corr-modo">Equipo</label><select id="corr-modo" class="inp" data-f="corr" data-p="modo">' + Object.keys(CORR_NOMBRES).map(function(k){ return '<option value="' + k + '"' + (f.modo === k ? ' selected' : '') + '>' + CORR_NOMBRES[k] + '</option>'; }).join('') + '</select></div>' +
+    '<div class="field"><label for="corr-delta">Diferencia en kg (negativa para restar)</label><input id="corr-delta" class="inp" data-f="corr" data-p="delta" value="' + esc(f.delta) + '" inputmode="text" autocomplete="off" placeholder="-5"></div>';
+  if (S.confirm === 'corregir' && f.resumen) {
+    var r = f.resumen, d = num(f.delta);
+    b += '<div class="confirm"><p><b>' + CORR_NOMBRES[f.modo] + ', ' + (d > 0 ? '+' : '') + esc(fmtKg(d)) + ' kg</b></p><p>Cambia ' + r.exTipos + (r.exTipos === 1 ? ' ejercicio' : ' ejercicios') + ' en ' + r.tipos + (r.tipos === 1 ? ' día tipo' : ' días tipo') + ', y ' + r.exDias + (r.exDias === 1 ? ' ejercicio' : ' ejercicios') + ' en ' + r.dias + (r.dias === 1 ? ' día' : ' días') + ' con ' + r.series + ' series anotadas con peso propio.</p><p>No se puede deshacer.</p><div class="row2"><button type="button" class="btn btn-danger-solid" data-a="corr-aplicar">Aplicar</button><button type="button" class="btn" data-a="corr-cancel">Cancelar</button></div></div>';
+  } else b += '<div class="row2"><button type="button" class="btn" data-a="corr-revisar">Revisar qué cambiaría</button></div>';
+  var hist = (c.correcciones || []).slice(-5).reverse();
+  if (hist.length) b += '<p class="hint small">Aplicadas: ' + esc(hist.map(function(h){ return fechaCorta(h.fecha) + ' ' + (CORR_NOMBRES[h.modo] || h.modo) + ' ' + (h.delta > 0 ? '+' : '') + fmtKg(h.delta) + ' kg (' + h.valores + ' valores)'; }).join(' · ')) + '</p>';
+  return b + '</div>';
+}
 function vCicloCfg(){
   var c = cicloCfg(), fuera = tiposList().filter(function(t){ return c.orden.indexOf(t.id) < 0; });
   var b = '<p class="hint small">El ciclo es el orden en que se encadenan tus días tipo. No se reinicia cada semana: la semana nueva sigue donde quedó el último día que hiciste, así lo que se cae nunca se salta.</p>';
@@ -2207,6 +2239,7 @@ function vCicloCfg(){
     campo('discos', 'Discos disponibles (kg, uno de cada par)', e.discos.map(fmtKg).join(', '), 'text', '5, 6.8, 10, 15.9') +
     '<p class="hint small" data-live="cargas">Cargas posibles con barra: ' + esc(window.Progresion.cargasBarra(e.barra, e.discos).map(fmtKg).join(', ')) + ' kg.</p>' +
     campo('pasoMancuerna', 'Paso entre mancuernas (kg)', fmtKg(e.pasoMancuerna)) + campo('mancuernaMax', 'Mancuerna más pesada (kg)', fmtKg(e.mancuernaMax)) + campo('pasoPolea', 'Paso de la polea (kg)', fmtKg(e.pasoPolea)) + '</div>';
+  b += vCorreccion(c);
   var di = descargaInfo(shiftWeek(curMonday(), 1));
   b += '<div class="sechead"><h2>Descarga</h2><span>Racha: ' + di.racha + (di.racha === 1 ? ' semana' : ' semanas') + '</span></div><p class="hint small">Cada tantas semanas seguidas con 3 o más sesiones, la app propone una semana ligera: mismas sesiones, menos series y pesos sin subir. Una semana floja o una descarga reinician la cuenta.</p>' +
     '<div class="card" style="display:flex;flex-direction:column;gap:12px">' + campo('descargaCada', 'Cada cuántas semanas', String(c.descargaCada), 'numeric') + campo('factorDescarga', 'Series en descarga (% de las planeadas)', String(Math.round(c.factorDescarga * 100)), 'numeric') + '</div>';
@@ -3009,6 +3042,9 @@ document.addEventListener('click', function(e){
     case 'ciclo-dia': var cdi = +d.i, cpos = t.dias.indexOf(cdi); if (cpos >= 0) t.dias.splice(cpos, 1); else t.dias.push(cdi); t.dias.sort(function(a, b){ return a - b; }); render(); break;
     case 'ciclo-ok': aplicarCiclo(t); break;
     case 'ciclo-descarga': t.descarga = !!el.checked; render(); break;
+    case 'corr-revisar': S.corr = S.corr || { modo: 'barra', delta: '-5' }; if (!num(S.corr.delta)) { showToast('Escribe la diferencia en kg, por ejemplo -5.'); break; } S.corr.resumen = corrResumen(S.corr.modo); S.confirm = 'corregir'; render(); break;
+    case 'corr-cancel': S.confirm = null; if (S.corr) S.corr.resumen = null; render(); break;
+    case 'corr-aplicar': if (S.corr && S.confirm === 'corregir') { var cn = corrAplicar(S.corr.modo, num(S.corr.delta)); S.confirm = null; S.corr = null; showToast('Corrección aplicada: ' + cn + ' valores ajustados.'); render(); } break;
     case 'descarga-armar': var dws = shiftWeek(curMonday(), 1); openCiclo(S.weeks[dws] && hasContent(S.weeks[dws]) ? 'reorg' : 'armar', dws, true); break;
     case 'descarga-despues': S.descargaIgnorada = shiftWeek(curMonday(), 1); render(); break;
     case 'open-ciclocfg': push({ v: 'ciclocfg' }); break;
@@ -3162,6 +3198,7 @@ document.addEventListener('change', function(e){
   }
   else if (f === 'photo') { uploadPhoto(el.files && el.files[0]); el.value = ''; }
   else if (f === 'resp-file') { respaldoElegir(el.files && el.files[0]); el.value = ''; }
+  else if (f === 'corr') { S.corr = S.corr || { modo: 'barra', delta: '-5' }; S.corr[el.dataset.p] = el.value; S.corr.resumen = null; if (S.confirm === 'corregir') { S.confirm = null; render(); } }
   else if (f === 'equipo') {
     var ep = el.dataset.p, ev = el.value;
     /* sin volver a dibujar la pantalla (el campo sigue con el foco): se guarda y se actualiza solo el texto de cargas */

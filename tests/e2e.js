@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const BASE = 'http://localhost:8765/mis-rutinas/';
 const SALIDA = path.join(__dirname, 'salida');
-const respaldo = process.argv[2] || path.join(__dirname, '..', 'semilla', 'semilla-sin-migrar.json');
+const respaldo = process.argv[2] || path.join(__dirname, '..', 'semilla', 'semilla-hoy-migrada.json');
 let fallos = 0;
 function ok(cond, msg){ console.log((cond ? 'OK   ' : 'FALLO') + ' ' + msg); if (!cond) fallos++; }
 
@@ -49,7 +49,7 @@ function ok(cond, msg){ console.log((cond ? 'OK   ' : 'FALLO') + ' ' + msg); if 
   await page.screenshot({ path: path.join(SALIDA, '05-semana-anterior.png'), fullPage: true });
 
   // abrir un día
-  const dia = page.locator('.daycard:not(.muted)[data-a="open-dia"]').first();
+  const dia = page.locator(".daycard:not(.muted)[data-a=\"open-dia\"]:not(:has-text(\"Hecho\"))").first();
   await dia.click();
   await page.waitForSelector('.excard');
   await page.screenshot({ path: path.join(SALIDA, '06-dia.png'), fullPage: true });
@@ -68,7 +68,7 @@ function ok(cond, msg){ console.log((cond ? 'OK   ' : 'FALLO') + ' ' + msg); if 
   await page.waitForFunction(() => !document.querySelector('.card.loading'));
   await page.waitForTimeout(400);
   await page.click('[data-a="wk-prev"]'); await page.waitForTimeout(300);
-  await page.locator('.daycard:not(.muted)[data-a="open-dia"]').first().click();
+  await page.locator(".daycard:not(.muted)[data-a=\"open-dia\"]:not(:has-text(\"Hecho\"))").first().click();
   await page.waitForSelector('.excard');
   const valor = await page.locator('.excard input[data-f="item"][data-p="kg"][data-k="' + kId + '"]').inputValue();
   ok(valor === '33', 'el cambio persiste tras recargar (kg = ' + valor + ')');

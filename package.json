@@ -7,7 +7,7 @@
     "build": "node tools/build-sw.js",
     "servir": "node tools/servir.js 8765 /mis-rutinas",
     "test": "node tests/runtime.test.js && node tests/ciclo.test.js && node tests/progresion.test.js && node tests/cronometro.test.js",
-    "e2e": "node tests/e2e.js && node tests/ciclo.e2e.js && node tests/progresion.e2e.js && node tests/descarga.e2e.js && node tests/cronometro.e2e.js"
+    "e2e": "node tests/e2e.js && node tests/ciclo.e2e.js && node tests/progresion.e2e.js && node tests/descarga.e2e.js && node tests/cronometro.e2e.js && node tests/correccion.e2e.js"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.7"

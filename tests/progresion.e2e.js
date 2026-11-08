@@ -22,9 +22,9 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
   // 1. equipo: la pantalla del ciclo muestra las cargas posibles de la barra con los discos de Santiago
   await page.click('.bottomnav [data-t="tipos"]'); await page.click('[data-a="open-ciclocfg"]'); await page.waitForSelector('[data-f="equipo"][data-p="barra"]');
   const cargas = await page.locator('.vbody').innerText();
-  ok(/20, 30, 33,6, 40, 43,6, 50/.test(cargas), 'cargas posibles con barra 20 y discos 5, 6.8, 10, 15.9');
-  await page.fill('[data-f="equipo"][data-p="barra"]', '15'); await page.dispatchEvent('[data-f="equipo"][data-p="barra"]', 'change'); await page.waitForTimeout(300);
-  ok(/15, 25, 28,6, 35/.test(await page.locator('.vbody').innerText()), 'al cambiar la barra a 15 se recalculan las cargas');
+  ok(/15, 25, 28,6, 35, 38,6, 45/.test(cargas), 'cargas posibles con la barra real de 15 y discos 5, 6.8, 10, 15.9');
+  await page.fill('[data-f="equipo"][data-p="barra"]', '20'); await page.dispatchEvent('[data-f="equipo"][data-p="barra"]', 'change'); await page.waitForTimeout(300);
+  ok(/20, 30, 33,6, 40/.test(await page.locator('.vbody').innerText()), 'al cambiar la barra a 20 se recalculan las cargas');
   await page.fill('[data-f="equipo"][data-p="barra"]', '20'); await page.dispatchEvent('[data-f="equipo"][data-p="barra"]', 'change'); await page.waitForTimeout(500);
   const eq = await page.evaluate(() => window.RutinasRuntime._pruebas.estado.cols.ciclo.principal.equipo);
   ok(eq && eq.barra === 20 && eq.discos.join() === '5,6.8,10,15.9', 'el equipo queda guardado en el documento del ciclo');
