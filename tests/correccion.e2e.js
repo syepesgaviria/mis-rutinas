@@ -13,6 +13,8 @@ const num = v => parseFloat(String(v == null ? '' : v).replace(',', '.'));
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'es-CO', timezoneId: 'America/Bogota' });
   const page = await ctx.newPage();
+  /* fecha fija: los recorridos asumen que la semilla es "hoy" (domingo 8 nov 2026); el reloj sigue corriendo desde ahí */
+  await page.clock.setSystemTime(new Date('2026-11-08T12:00:00-05:00'));
   const errores = []; page.on('pageerror', e => errores.push(e.message)); page.on('console', m => { if (m.type() === 'error') errores.push(m.text()); });
   await page.goto(BASE, { waitUntil: 'load' }); await quieto(page);
   await page.click('.bottomnav [data-t="progreso"]'); await page.click('[data-a="open-datos"]');
