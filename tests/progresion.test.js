@@ -88,4 +88,15 @@ prueba('corregirItem resta a lo planeado, a cada serie con peso propio y a la pr
   const bajo = { kg: '3' }; P.corregirItem(bajo, -5, fmt); assert.strictEqual(bajo.kg, '0', 'nunca queda negativo');
 });
 
+prueba('discosPara: la combinación por lado más cercana a la carga', () => {
+  const eq = { barra: 15, discos: [5, 6.8, 10, 15.9] };
+  assert.deepStrictEqual(P.discosPara(35, eq, 'barra'), { porLado: [10], total: 35, exacto: true });
+  assert.deepStrictEqual(P.discosPara(60, eq, 'barra'), { porLado: [15.9, 6.8], total: 60.4, exacto: false }, '60 no se arma exacto: lo más cercano es 60,4');
+  assert.deepStrictEqual(P.discosPara(66.8, eq, 'barra'), { porLado: [15.9, 10], total: 66.8, exacto: true });
+  assert.deepStrictEqual(P.discosPara(15, eq, 'barra'), { porLado: [], total: 15, exacto: true }, 'la barra sola');
+  assert.strictEqual(P.discosPara(10, eq, 'barra'), null, 'por debajo de la barra no hay combinación');
+  assert.deepStrictEqual(P.discosPara(20, { barraEz: 10, discos: [5] }, 'barraez'), { porLado: [5], total: 20, exacto: true });
+  assert.deepStrictEqual(P.discosPara(45, { barra: 15, discos: [5, 10, 15] }, 'barra').porLado, [15], 'en empate gana la de menos discos');
+});
+
 console.log(n + ' pruebas pasadas' + (process.exitCode ? ', con fallos' : ''));

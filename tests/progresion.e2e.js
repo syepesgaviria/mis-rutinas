@@ -33,6 +33,8 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
 
   // 2. en el lunes hecho (Pierna A) se anota un ejercicio con barra al tope en todas las series
   await page.click('.bottomnav [data-t="semana"]'); await page.waitForTimeout(300);
+  // si la semana en curso todavía no tiene días hechos (lunes, por ejemplo), se usa la anterior
+  if (await page.locator('.daycard:has(.pill.good)').count() === 0) { await page.click('[data-a="wk-prev"]'); await page.waitForTimeout(300); }
   await page.locator('.daycard:has(.pill.good)').first().click(); await page.waitForSelector('.excard');
   const info = await page.evaluate(() => {
     const cards = Array.from(document.querySelectorAll('.excard'));
@@ -57,8 +59,12 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
 
   // 3. la semana siguiente se rearma: el mismo ejercicio llega con 43,6 y la marca "Sube"
   await page.click('[data-a="wk-next"]'); await page.waitForTimeout(400);
-  await page.click('[data-a="open-reorg"]'); await page.waitForSelector('[data-a="ciclo-ok"]');
-  await page.click('[data-a="ciclo-n"][data-n="4"]'); await page.waitForTimeout(150);
+  // si esa semana ya venía armada (la app la arma sola al abrir, con el equipo de ese momento), se reorganiza con otro
+  // número de días para que los días cambien y las propuestas se calculen de nuevo con la barra de 20 que puso la prueba
+  const yaArmada = await page.locator('[data-a="open-reorg"]').count() > 0;
+  if (yaArmada) await page.click('[data-a="open-reorg"]'); else await page.click('[data-a="new-ciclo"]');
+  await page.waitForSelector('[data-a="ciclo-ok"]');
+  await page.click('[data-a="ciclo-n"][data-n="' + (yaArmada ? 5 : 4) + '"]'); await page.waitForTimeout(150);
   await page.click('[data-a="ciclo-ok"]'); await page.waitForTimeout(800);
   const pill = await page.locator('.daycard .pill.accent').allInnerTexts();
   ok(pill.some(t => /sube/.test(t)), 'la semana muestra cuántos ejercicios suben: ' + pill.join(' | '));
@@ -68,6 +74,9 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
   const card = page.locator('.excard').filter({ has: page.locator('.exname b', { hasText: info.nombre.replace(/^[A-Z]\d/, '') }) }).first();
   const sug = await card.locator('.sugbar').innerText();
   ok(/Sube de 40 a 43,6/.test(sug), 'el editor muestra la propuesta con la siguiente carga de la barra: ' + sug.replace(/\n/g, ' '));
+  ok(/Discos: 6,8 \+ 5 por lado\./.test(sug), 'la propuesta dice qué discos poner (43,6 = barra 20 + 2 × 11,8): ' + sug.replace(/\n/g, ' '));
+  const plates = await card.locator('.plates').innerText();
+  ok(/Discos: 6,8 \+ 5 por lado$/.test(plates.trim()), 'debajo del peso planeado aparece la combinación de discos: ' + plates);
   const kgNuevo = await card.locator('[data-f="item"][data-p="kg"]').inputValue();
   ok(kgNuevo === '43,6' || kgNuevo === '43.6', 'el peso viene precargado con la propuesta (' + kgNuevo + ')');
   const otras = await page.locator('.sugbar').allInnerTexts();

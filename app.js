@@ -47,6 +47,7 @@ var I = {
   expand:'<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
   image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
   trend:'<path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
+  disc:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
   swap:'<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
   cycle:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/>',
   timer:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9 2h6"/>',
@@ -1476,7 +1477,7 @@ function vExCard(it, o){
     '<button type="button" class="iconbtn" data-a="swap-open" data-k="' + esc(it.k) + '" aria-label="Cambiar ' + esc(ex.n) + ' por otro ejercicio">' + ic('swap', 18) + '</button>' +
     '<button type="button" class="iconbtn" data-a="item-note" data-k="' + esc(it.k) + '" aria-label="' + (noteOpen ? 'Nota' : 'Agregar nota') + '" aria-pressed="' + (noteOpen ? 'true' : 'false') + '">' + ic('pencil', 18) + '</button>' +
     '<button type="button" class="iconbtn" data-a="item-del" data-k="' + esc(it.k) + '" aria-label="Quitar ' + esc(ex.n) + '">' + ic('trash', 18) + '</button></div>' +
-    fields + vSug(it, ex) +
+    fields + (cardio ? '' : vDiscos(it, ex)) + vSug(it, ex) +
     (noteOpen ? '<div class="note">' + ic('pencil', 16) + '<input id="' + esc(fid(it.k, 'note')) + '" aria-label="Nota de ' + esc(ex.n) + '" data-f="item" data-k="' + esc(it.k) + '" data-p="note" value="' + esc(it.note || '') + '" placeholder="Nota, por ejemplo: pausa de 1 s abajo" autocomplete="off"></div>' : '') +
     (cardio ? '' : o.logDate ? vLog(it, ex, o.logDate, ctx) : o.planDate ? vPlanHint(it, ex, o.planDate) : '') +
     (cardio ? '' : '<p class="err fielderr" id="' + esc(errId(it)) + '" data-log="' + (o.logDate ? '1' : '') + '" aria-live="polite">' + esc(cardErrs(ctx, it, !!o.logDate).join('\n')) + '</p>') +
@@ -1484,7 +1485,7 @@ function vExCard(it, o){
 }
 function vSug(it, ex){
   var g = sugDe(it); if (!g) return '';
-  return '<div class="sugbar"><span>' + ic('trend', 16) + 'Sube de ' + esc(fmtKg(g.de)) + ' a ' + esc(fmtKg(g.a)) + ' kg' + esc(kgSuf(ex)) + ': llegaste al tope la última vez.</span><button type="button" class="linkbtn sm" data-a="sug-undo" data-k="' + esc(it.k) + '">Dejar en ' + esc(fmtKg(g.de)) + '</button></div>';
+  return '<div class="sugbar"><span>' + ic('trend', 16) + 'Sube de ' + esc(fmtKg(g.de)) + ' a ' + esc(fmtKg(g.a)) + ' kg' + esc(kgSuf(ex)) + ': llegaste al tope la última vez.' + (discosTexto(ex, g.a) ? ' Discos: ' + esc(discosTexto(ex, g.a)) + '.' : '') + '</span><button type="button" class="linkbtn sm" data-a="sug-undo" data-k="' + esc(it.k) + '">Dejar en ' + esc(fmtKg(g.de)) + '</button></div>';
 }
 function totalsText(c){ var s = dayStats(c); var p = []; if (s.f) p.push(s.sets + ' series'); if (s.c) p.push(fmtNum(s.min) + ' min cardio'); return p.length ? p.join(' · ') : 'Sin ejercicios'; }
 function fMeta(c){ var s = dayStats(c), v = dayVol(c); return s.f + (s.f === 1 ? ' ejercicio' : ' ejercicios') + ' · ' + s.sets + ' series' + (v ? ' · total ' + fmtVol(v) + ' kg' : ''); }
@@ -2536,6 +2537,15 @@ function modalidadDe(ex){
 }
 /* siguiente carga según el equipo real (discos de la barra, paso de las mancuernas, paso de la polea) */
 function nextKg(ex, kg){ return window.Progresion.siguiente(modalidadDe(ex), kg, cicloCfg().equipo); }
+/* discos por lado para una carga con barra: "15,9 + 6,8" (y la carga real si no es exacta). Vacío si no aplica */
+function discosTexto(ex, kg){
+  var m = modalidadDe(ex); if (m !== 'barra' && m !== 'barraez') return '';
+  var d = window.Progresion.discosPara(kg, cicloCfg().equipo, m); if (!d) return '';
+  if (!d.porLado.length) return d.exacto ? 'la barra sola' : 'la barra sola (' + fmtKg(d.total) + ' kg)';
+  var lado = d.porLado.map(fmtKg).join(' + ');
+  return (d.porLado.length === 1 ? 'un disco de ' : '') + lado + ' por lado' + (d.exacto ? '' : ' (da ' + fmtKg(d.total) + ' kg)');
+}
+function vDiscos(it, ex){ var k = num(it.kg); if (!(k > 0)) return ''; var t = discosTexto(ex, k); return t ? '<p class="plates">' + ic('disc', 14) + 'Discos: ' + esc(t) + '</p>' : ''; }
 function logHint(it, ex, date){
   var L = lastLog(it.ex, date);
   if (!L) return hasLog(it) ? '' : '<span>Anota el peso y las repeticiones de cada serie. Si el peso no cambia, deja la casilla vacía y cuenta el de la serie anterior.</span>';
@@ -2553,7 +2563,7 @@ function logHint(it, ex, date){
   if (ev.estado === 'distintos') return s + '<span>Las series tuvieron pesos distintos: mantén la carga hasta hacer las ' + need + ' con el mismo peso y llegar a ' + top + ' en todas.</span>';
   if (ev.estado === 'mantener') return s + '<span>' + (w0 > 0 ? 'Mantén ' + fmtKg(w0) + kgUnit(ex) + kgSuf(ex) : 'Mantén la carga') + ' hasta llegar a ' + top + ' en todas las series.</span>';
   var nx = w0 > 0 ? nextKg(ex, w0) : null, en = ' en todas', m = cargaDe(ex);
-  if (nx) return s + '<span class="up">Llegaste a ' + top + en + ': sube a ' + fmtKg(nx) + kgUnit(ex) + kgSuf(ex) + '.</span>' + (num(it.kg) !== nx ? '<button type="button" class="linkbtn sm" data-a="use-kg" data-k="' + esc(it.k) + '" data-v="' + nx + '">Usar ' + fmtKg(nx) + ' kg</button>' : '');
+  if (nx) return s + '<span class="up">Llegaste a ' + top + en + ': sube a ' + fmtKg(nx) + kgUnit(ex) + kgSuf(ex) + (discosTexto(ex, nx) ? ' (' + esc(discosTexto(ex, nx)) + ')' : '') + '.</span>' + (num(it.kg) !== nx ? '<button type="button" class="linkbtn sm" data-a="use-kg" data-k="' + esc(it.k) + '" data-v="' + nx + '">Usar ' + fmtKg(nx) + ' kg</button>' : '');
   if (modalidadDe(ex) === 'dos' || modalidadDe(ex) === 'una') return s + '<span class="up">Llegaste a ' + top + en + ' con la mancuerna más pesada: pasa a una variante más difícil o suma repeticiones.</span>';
   if (m === 'polea' || (!m && (ex.e === 'Polea' || ex.e === 'Máquina'))) return s + '<span class="up">Llegaste a ' + top + en + ': sube una placa.</span>';
   if (esCorporal(ex)) return s + '<span class="up">Llegaste a ' + top + en + ': agrega peso o pasa a una variante más difícil.</span>';

@@ -73,9 +73,25 @@ function corregirItem(it, delta, fmt){
   return n;
 }
 
+/* qué discos poner por lado para una carga: la combinación (un par de cada disco) que más se acerque; empates, la de
+   menos discos. Devuelve { porLado, total, exacto } o null si la carga está por debajo de la barra o no hay discos */
+function discosPara(kg, eq, modalidad){
+  eq = normalizarEquipo(eq); kg = +kg || 0;
+  var barra = modalidad === 'barraez' ? eq.barraEz : eq.barra, discos = eq.discos.slice().sort(function(a, b){ return b - a; });
+  if (kg < barra - 0.05) return null;
+  var mejor = null, n = discos.length;
+  for (var mask = 0; mask < (1 << n); mask++) {
+    var lado = [], suma = 0;
+    for (var i = 0; i < n; i++) if (mask & (1 << i)) { lado.push(discos[i]); suma += discos[i]; }
+    var total = r1(barra + 2 * suma), dif = Math.abs(total - kg);
+    if (!mejor || dif < mejor.dif - 0.001 || (Math.abs(dif - mejor.dif) <= 0.001 && lado.length < mejor.porLado.length)) mejor = { porLado: lado, total: total, dif: dif };
+  }
+  return { porLado: mejor.porLado, total: mejor.total, exacto: mejor.dif <= 0.05 };
+}
+
 /* texto corto de una propuesta guardada en el ítem: "20>22.5" → { de: 20, a: 22.5 } */
 function leerSug(s){ var m = String(s || '').split('>'); if (m.length !== 2) return null; var de = parseFloat(m[0]), a = parseFloat(m[1]); return isFinite(de) && isFinite(a) ? { de: de, a: a } : null; }
 function escribirSug(de, a){ return String(r1(de)) + '>' + String(r1(a)); }
 
-window.Progresion = { EQUIPO: EQUIPO, normalizarEquipo: normalizarEquipo, cargasBarra: cargasBarra, siguiente: siguiente, evaluar: evaluar, leerSug: leerSug, escribirSug: escribirSug, corregirItem: corregirItem };
+window.Progresion = { EQUIPO: EQUIPO, normalizarEquipo: normalizarEquipo, cargasBarra: cargasBarra, siguiente: siguiente, evaluar: evaluar, leerSug: leerSug, escribirSug: escribirSug, corregirItem: corregirItem, discosPara: discosPara };
 })();
