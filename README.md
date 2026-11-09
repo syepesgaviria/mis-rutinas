@@ -23,7 +23,7 @@ Los datos viven solo en el teléfono. En Progreso, Datos y respaldo, "Guardar re
 - `img/`: fotos del catálogo (Free Exercise DB, dominio público) y dos ilustraciones esquemáticas.
 - `fonts/`: Archivo (SIL Open Font License), empaquetada para funcionar sin conexión.
 - `tools/`: `build-sw.js` (genera `sw.js`), `servir.js` (servidor local de pruebas), `semilla.js` (convierte una exportación de la base anterior en un archivo de respaldo).
-- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js`, `progresion.test.js` y `cronometro.test.js` (lógica pura), `e2e.js`, `ciclo.e2e.js`, `progresion.e2e.js`, `descarga.e2e.js`, `cronometro.e2e.js` y `correccion.e2e.js` (recorridos a tamaño iPhone con Playwright).
+- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js`, `progresion.test.js` y `cronometro.test.js` (lógica pura), `e2e.js`, `ciclo.e2e.js`, `progresion.e2e.js`, `descarga.e2e.js`, `cronometro.e2e.js`, `correccion.e2e.js` y `bloques.e2e.js` (recorridos a tamaño iPhone con Playwright).
 
 ## Desarrollo
 

@@ -323,7 +323,7 @@ function pendCount(){ return Object.keys(S.cola).length; }
    y prototype. Un campo conocido inválido sigue aislado por T01; editar un campo conocido no toca los desconocidos */
 var UNSAFE = dict(); ['__proto__', 'constructor', 'prototype'].forEach(function(k){ UNSAFE[k] = true; });
 function knownSet(list){ var s = dict(); list.forEach(function(k){ s[k] = true; }); return s; }
-var ITEM_KNOWN = knownSet(['k', 'ex', '_k0', '_x'].concat(FIELDS)), DAY_KNOWN = knownSet(['esquema', 'fecha', 'name', 'rest', 'tipo', 'items', 'blank', 'descarga', 'rev', 'base', 'lin', 'origen', 'updatedAt', '_x', '_origen']), TIPO_KNOWN = knownSet(['id', 'name', 'items', 'ejemplo', 'updatedAt', '_x', '_local']), CUSTOM_KNOWN = knownSet(['n', 't', 'g', 's', 'e', 'p', 'img', 'carga', 'deleted', 'createdAt', 'updatedAt', '_x', '_ro', '_local']);
+var ITEM_KNOWN = knownSet(['k', 'ex', '_k0', '_x'].concat(FIELDS)), DAY_KNOWN = knownSet(['esquema', 'fecha', 'name', 'rest', 'tipo', 'items', 'blank', 'descarga', 'calent', 'estir', 'calentOk', 'estirOk', 'rev', 'base', 'lin', 'origen', 'updatedAt', '_x', '_origen']), TIPO_KNOWN = knownSet(['id', 'name', 'items', 'ejemplo', 'calent', 'estir', 'updatedAt', '_x', '_local']), CUSTOM_KNOWN = knownSet(['n', 't', 'g', 's', 'e', 'p', 'img', 'carga', 'deleted', 'createdAt', 'updatedAt', '_x', '_ro', '_local']);
 function extrasOf(o, known){ var x = null; if (!isObj(o)) return null; Object.keys(o).forEach(function(k){ if (known[k] || UNSAFE[k] || o[k] === undefined) return; if (!x) x = dict(); x[k] = clone(o[k]); }); return x; }
 function putExtras(body, x){ if (x) Object.keys(x).forEach(function(k){ if (!UNSAFE[k] && !own(body, k)) body[k] = clone(x[k]); }); return body; }
 function serItems(items){ return items.map(function(it){ var o = { k: String(it._k0 != null ? it._k0 : it.k), ex: String(it.ex) }; FIELDS.forEach(function(f){ if (it[f] != null && it[f] !== '') o[f] = String(it[f]); }); return putExtras(o, it._x); }); }
@@ -341,8 +341,8 @@ function buildOp(key, now){
   if (kind === 'w') throw new Error('la semana ya no se guarda como un solo documento');
   /* día: esquema explícito. rev identifica esta escritura; base y lin (predecesor y cadena corta) se fijan al enviar,
      cuando se conoce la versión que el servicio tiene; origen se conserva si el día vino de una migración */
-  if (kind === 'd') { var dd = liveDay(id); if (!dd) throw new Error('día ausente'); var wsb = S.weeks[wsOf(id)]; var body = { esquema: 1, fecha: id, name: String(dd.name || ''), rest: !!dd.rest, tipo: dd.tipo || null, items: serItems(dd.items) }; if (wd(id) === 0 && wsb && wsb.blank) body.blank = true; if (dd.descarga === true) body.descarga = true; if (isObj(dd._origen)) body.origen = clone(dd._origen); body.updatedAt = now; return { op: 'set', body: putExtras(body, dd._x) }; }
-  if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t._x) } : { op: 'delete', body: null }; }
+  if (kind === 'd') { var dd = liveDay(id); if (!dd) throw new Error('día ausente'); var wsb = S.weeks[wsOf(id)]; var body = { esquema: 1, fecha: id, name: String(dd.name || ''), rest: !!dd.rest, tipo: dd.tipo || null, items: serItems(dd.items) }; if (wd(id) === 0 && wsb && wsb.blank) body.blank = true; if (dd.descarga === true) body.descarga = true; serBloques(body, dd, true); if (isObj(dd._origen)) body.origen = clone(dd._origen); body.updatedAt = now; return { op: 'set', body: putExtras(body, dd._x) }; }
+  if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras(serBloques({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t, false), t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
   if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; if (Array.isArray(nk.correcciones)) bk.correcciones = nk.correcciones.slice(-20); return { op: 'set', body: bk }; }
@@ -643,9 +643,35 @@ function normWeek(o, id){
   return { start: id, blank: !!o.blank, days: [0,1,2,3,4,5,6].map(function(i){ var d = isObj(days[i]) ? days[i] : {}; return { name: String(d.name || ''), rest: !!d.rest, tipo: d.tipo ? String(d.tipo) : null, items: normItems(d.items) }; }) };
 }
 /* día independiente: el documento se lee como un día de la semana antigua; rev/base/lin/blank/origen van a dmeta */
-function normDay(o, id){ o = isObj(o) ? o : {}; var d = { name: String(o.name || ''), rest: !!o.rest, tipo: o.tipo ? String(o.tipo) : null, items: normItems(o.items) }; if (o.descarga === true) d.descarga = true; var x = extrasOf(o, DAY_KNOWN); if (x) d._x = x; if (isObj(o.origen)) d._origen = clone(o.origen); return d; }
+function normDay(o, id){ o = isObj(o) ? o : {}; var d = { name: String(o.name || ''), rest: !!o.rest, tipo: o.tipo ? String(o.tipo) : null, items: normItems(o.items) }; if (o.descarga === true) d.descarga = true; normBloques(d, o, true); var x = extrasOf(o, DAY_KNOWN); if (x) d._x = x; if (isObj(o.origen)) d._origen = clone(o.origen); return d; }
 function metaDia(o){ return { src: 'dia', rev: revOf(o), base: typeof o.base === 'string' ? o.base : null, lin: linOf(o), blank: o.blank === true, mig: isObj(o.origen) && typeof o.origen.migracion === 'string' ? o.origen.migracion : null }; }
-function normTipo(o, id){ o = isObj(o) ? o : {}; var t = { id: id, name: String(o.name || ''), items: normItems(o.items), ejemplo: !!o.ejemplo }; var x = extrasOf(o, TIPO_KNOWN); if (x) t._x = x; return t; }
+function normTipo(o, id){ o = isObj(o) ? o : {}; var t = { id: id, name: String(o.name || ''), items: normItems(o.items), ejemplo: !!o.ejemplo }; normBloques(t, o, false); var x = extrasOf(o, TIPO_KNOWN); if (x) t._x = x; return t; }
+/* CALENTAMIENTO Y ESTIRAMIENTO: listas cortas de { n: nombre, t: dosis } en el día tipo y en el día; el día lleva además
+   la marca de hecho de cada bloque. Son campos nuevos: los documentos viejos siguen leyéndose igual */
+var BLOQUES = ['calent', 'estir'], BLOQUE_NOMBRE = { calent: 'Calentamiento', estir: 'Estiramiento' }, BLOQUE_OK = { calent: 'calentOk', estir: 'estirOk' };
+var BLOQUE_DEF = {
+  calent: {
+    pierna: [['Caminadora suave', '5 min'], ['Círculos de cadera', '10/lado'], ['Balanceo de pierna al frente', '10/pierna'], ['Balanceo de pierna lateral', '10/pierna'], ['Sentadilla sin peso, lenta', '10'], ['Zancadas caminando', '8'], ['Puente de glúteo', '10'], ['Aproximación: barra sola, luego mitad del peso', '1 serie c/u']],
+    torso: [['Caminadora suave', '5 min'], ['Círculos de brazos adelante y atrás', '10 y 10'], ['Rotaciones de torso', '10'], ['Face pull suave o band pull-apart', '15'], ['Flexiones', '10'], ['Dislocaciones de hombro con banda o toalla', '10'], ['Aproximación: primer ejercicio a mitad de peso', '1 serie']]
+  },
+  estir: {
+    pierna: [['Cuádriceps de pie, talón al glúteo', '30 s/lado'], ['Isquiotibiales, pierna sobre un banco', '30 s/lado'], ['Flexores de cadera, rodilla al piso y cadera adelante', '30 s/lado'], ['Glúteo, figura 4', '30 s/lado'], ['Pantorrilla contra la pared', '30 s/lado']],
+    torso: [['Pectoral en el marco de una puerta', '30 s/lado'], ['Dorsal colgado o apoyado en el rack', '30 s'], ['Tríceps por encima de la cabeza', '30 s/lado'], ['Hombro, brazo cruzado', '30 s/lado'], ['Antebrazos', '20 s/lado'], ['Postura de niño', '30 s']]
+  }
+};
+function bloqueDef(s, q){ return (BLOQUE_DEF[s][q] || []).map(function(x){ return { n: x[0], t: x[1] }; }); }
+function normBloque(a){ if (!Array.isArray(a)) return []; return a.filter(isObj).map(function(x){ return { n: String(x.n == null ? '' : x.n).slice(0, 120), t: String(x.t == null ? '' : x.t).slice(0, 60) }; }).filter(function(x){ return x.n || x.t; }).slice(0, 30); }
+function normBloques(d, o, esDia){ BLOQUES.forEach(function(s){ var l = normBloque(o[s]); if (l.length) d[s] = l; if (esDia && o[BLOQUE_OK[s]] === true) d[BLOQUE_OK[s]] = true; }); }
+function serBloques(body, d, esDia){ BLOQUES.forEach(function(s){ var l = normBloque(d[s]); if (l.length) body[s] = l; if (esDia && d[BLOQUE_OK[s]] === true) body[BLOQUE_OK[s]] = true; }); return body; }
+function bloqueProblems(o, why, esDia){ BLOQUES.forEach(function(s){ if (o[s] !== undefined && !Array.isArray(o[s])) why.push('el ' + BLOQUE_NOMBRE[s].toLowerCase() + ' no es una lista'); if (esDia && o[BLOQUE_OK[s]] !== undefined && typeof o[BLOQUE_OK[s]] !== 'boolean') why.push('la marca de ' + BLOQUE_NOMBRE[s].toLowerCase() + ' hecho no es sí o no'); }); }
+function copiarBloques(dst, src){ BLOQUES.forEach(function(s){ if (src && src[s] && src[s].length) dst[s] = clone(src[s]); else delete dst[s]; delete dst[BLOQUE_OK[s]]; }); return dst; }
+/* qué sugerencia ofrecer: pierna o torso según el nombre o los grupos musculares del contenido */
+function bloqueTipoSugerido(c){
+  var n = norm(c.name || ''); if (/pierna|gluteo|glúteo|lower|leg/.test(n)) return 'pierna'; if (/torso|empuje|tiron|tirón|pecho|espalda|upper|push|pull/.test(n)) return 'torso';
+  var pierna = 0, torso = 0; (c.items || []).forEach(function(it){ if (isCardio(it)) return; var g = exById(it.ex).g; if (['Cuádriceps', 'Isquios', 'Glúteo', 'Pantorrilla'].indexOf(g) >= 0) pierna++; else if (g && g !== 'Core') torso++; });
+  return pierna >= torso ? 'pierna' : 'torso';
+}
+
 /* propios: textos, listas de textos e id de foto válidos; _ro marca la copia de solo lectura de un documento aislado */
 function sanitizeCustom(o, ro){
   o = isObj(o) ? o : {};
@@ -681,6 +707,7 @@ function dayProblems(o, id){
   if (o.tipo !== undefined && o.tipo !== null && !textOk(o.tipo)) why.push('el día tipo no es un identificador');
   if (o.blank !== undefined && typeof o.blank !== 'boolean') why.push('la marca de semana en blanco no es sí o no');
   if (o.descarga !== undefined && typeof o.descarga !== 'boolean') why.push('la marca de descarga no es sí o no');
+  bloqueProblems(o, why, true);
   if (o.rev !== undefined && !(typeof o.rev === 'string' && o.rev)) why.push('la revisión no es texto');
   if (o.base !== undefined && o.base !== null && typeof o.base !== 'string') why.push('la revisión base no es texto');
   if (o.lin !== undefined && !Array.isArray(o.lin)) why.push('la cadena de revisiones no es una lista');
@@ -708,6 +735,7 @@ function tipoProblems(o){
   var why = [];
   if (o.name !== undefined && !textOk(o.name)) why.push('el nombre no es texto');
   if (o.ejemplo !== undefined && typeof o.ejemplo !== 'boolean') why.push('la marca de ejemplo no es sí o no');
+  bloqueProblems(o, why, false);
   itemProblems(o.items, 'ejercicios', why);
   return why;
 }
@@ -1483,6 +1511,30 @@ function vExCard(it, o){
     (cardio ? '' : '<p class="err fielderr" id="' + esc(errId(it)) + '" data-log="' + (o.logDate ? '1' : '') + '" aria-live="polite">' + esc(cardErrs(ctx, it, !!o.logDate).join('\n')) + '</p>') +
     '</div>';
 }
+/* bloque de calentamiento o estiramiento: lista editable; en el día, además la marca de hecho */
+function vBloque(c, s, ctx, isDay, logDate){
+  var l = c[s] || [], ok = isDay && c[BLOQUE_OK[s]] === true, b = '<div class="sechead"><h2>' + BLOQUE_NOMBRE[s] + '</h2>';
+  if (isDay && l.length) b += '<label class="okchk"><input type="checkbox" data-f="bloqueok" data-s="' + s + '"' + (ok ? ' checked' : '') + '>Hecho</label>';
+  else b += '<span>' + (l.length ? l.length + (l.length === 1 ? ' paso' : ' pasos') : '') + '</span>';
+  b += '</div><div class="bloque' + (ok ? ' ok' : '') + '" data-sec="' + s + '">';
+  var editar = !isDay || S.bloqueEdit === s || !l.length;
+  if (!editar) {
+    /* en el día se lee como lista; editar es un toque aparte, para que en el gimnasio se lea de un vistazo */
+    b += '<ol class="bsteps">' + l.map(function(x){ return '<li><span>' + esc(x.n) + '</span>' + (x.t ? '<b>' + esc(x.t) + '</b>' : '') + '</li>'; }).join('') + '</ol>' +
+      '<button type="button" class="linkbtn" data-a="bloque-edit" data-s="' + s + '">' + ic('pencil', 16, 2) + 'Editar</button></div>';
+    return b;
+  }
+  l.forEach(function(x, i){
+    b += '<div class="brow"><input class="inp" data-f="bloque" data-s="' + s + '" data-i="' + i + '" data-p="n" value="' + esc(x.n) + '" placeholder="Ejercicio" autocomplete="off" aria-label="Paso ' + (i + 1) + '"><input class="inp num" data-f="bloque" data-s="' + s + '" data-i="' + i + '" data-p="t" value="' + esc(x.t) + '" placeholder="10 reps" autocomplete="off" aria-label="Cantidad del paso ' + (i + 1) + '"><button type="button" class="iconbtn" data-a="bloque-del" data-s="' + s + '" data-i="' + i + '" aria-label="Quitar paso">' + ic('x', 16, 2) + '</button></div>';
+  });
+  if (!l.length) {
+    var q = bloqueTipoSugerido(c);
+    b += '<p class="hint small">' + (s === 'calent' ? 'Antes de la fuerza: movimiento, no estiramiento quieto. 5 minutos.' : 'Al final, con el músculo caliente: 20 a 30 segundos por posición, sin rebotar.') + '</p>' +
+      '<div class="row2"><button type="button" class="btn" data-a="bloque-def" data-s="' + s + '" data-q="' + q + '">Poner el de ' + q + '</button><button type="button" class="linkbtn" data-a="bloque-def" data-s="' + s + '" data-q="' + (q === 'pierna' ? 'torso' : 'pierna') + '">o el de ' + (q === 'pierna' ? 'torso' : 'pierna') + '</button></div>';
+  }
+  b += '<button type="button" class="linkbtn" data-a="bloque-add" data-s="' + s + '">' + ic('plus', 16, 2) + 'Agregar paso</button></div>';
+  return b;
+}
 function vSug(it, ex){
   var g = sugDe(it); if (!g) return '';
   return '<div class="sugbar"><span>' + ic('trend', 16) + 'Sube de ' + esc(fmtKg(g.de)) + ' a ' + esc(fmtKg(g.a)) + ' kg' + esc(kgSuf(ex)) + ': llegaste al tope la última vez.' + (discosTexto(ex, g.a) ? ' Discos: ' + esc(discosTexto(ex, g.a)) + '.' : '') + '</span><button type="button" class="linkbtn sm" data-a="sug-undo" data-k="' + esc(it.k) + '">Dejar en ' + esc(fmtKg(g.de)) + '</button></div>';
@@ -1524,10 +1576,12 @@ function vEditor(ctx){
   if (isDay && c.rest) {
     b += '<div class="restnote">Día de descanso. Quita la marca para planear ejercicios.</div>';
   } else {
+    b += vBloque(c, 'calent', ctx, isDay, logDate);
     if (f.length) b += '<div class="sechead"><h2>Fuerza</h2><span data-live="fmeta">' + fMeta(c) + '</span></div><div class="exlist" data-sec="fuerza">' + strengthBlocks(f, logDate, planDate, ctx) + '</div>';
     if (cd.length) b += '<div class="sechead"><h2>Cardio</h2><span data-live="cmeta">' + cMeta(c) + '</span></div><div class="exlist" data-sec="cardio">' + cd.map(function(it){ return vExCard(it, { ctx: ctx }); }).join('') + '</div>';
     if (!c.items.length) b += '<p class="hint">Todavía no hay ejercicios. Agrégalos desde la biblioteca' + (isDay ? ' o carga un día tipo.' : '.') + '</p>';
     b += '<button type="button" class="addbtn" data-a="open-lib">' + ic('plus', 20, 2) + 'Agregar ejercicio</button>';
+    b += vBloque(c, 'estir', ctx, isDay, logDate);
   }
   if (isDay && (c.items.length || c.name || c.rest) && !dayKept(ctx)) {
     b += S.confirm === 'dayclear' ? '<div class="confirm"><p>Se quitan todos los ejercicios de este día.</p><div class="row2"><button type="button" class="btn btn-danger-solid" data-a="day-clear-ok">Vaciar día</button><button type="button" class="btn" data-a="cancel">Cancelar</button></div></div>' : '<div class="editfoot"><button type="button" class="linkbtn danger" data-a="day-clear">Vaciar día</button></div>';
@@ -2484,13 +2538,13 @@ function grpSel(it){
   return '<div class="fld"><label for="' + esc(id) + '">Grupo</label><select id="' + esc(id) + '" class="inp num" data-f="grp" data-k="' + esc(it.k) + '"' + (known ? '' : ' aria-invalid="true"') + '><option value=""' + (g ? '' : ' selected') + '>Solo</option>' +
     GLET.map(function(l){ return '<option' + (g === l ? ' selected' : '') + '>' + l + '</option>'; }).join('') + (known ? '' : '<option value="' + esc(g) + '" selected>' + esc(short(g)) + ' (no válido)</option>') + '</select></div>';
 }
-function grpHead(run, g, n0){
+function grpHead(run, g, n0, conCrono){
   var n = run.length, rondas = Math.max.apply(null, run.map(function(x){ return setsN(x); })) || 0, ge = esc(g);
   var rest = (run.filter(function(x){ return x.rest; }).pop() || {}).rest || '', id = 'gr-' + n0, rsec = window.Cronometro ? window.Cronometro.parse(rest) : null;
   var sub = n > 1 ? (rondas ? rondas + ' rondas. ' : '') + 'Una serie de cada ejercicio seguidas y luego descansas.' : 'Asigna otro ejercicio a la letra ' + ge + ' para alternarlos.';
   return '<div class="grphead"><span class="gtag" aria-hidden="true">' + ge + '</span><span class="gtt"><b>' + grpName(n) + ' ' + ge + '</b><small>' + sub + '</small></span>' +
     '<div class="fld grest"><label for="' + id + '">Descanso</label><input id="' + id + '" class="inp num" data-f="grest" data-g="' + ge + '" data-k0="' + esc(run[0].k) + '" value="' + esc(rest) + '" autocomplete="off" placeholder="1:30"></div>' +
-    (rsec ? '<button type="button" class="restbtn gstart" data-a="timer-start" data-s="' + rsec + '" data-l="' + esc(grpName(n) + ' ' + g) + '" aria-label="Iniciar descanso de ' + esc(window.Cronometro.fmt(rsec)) + '">' + ic('timer', 16, 2) + 'Iniciar</button>' : '') + '</div>';
+    (rsec && conCrono ? '<button type="button" class="restbtn gstart" data-a="timer-start" data-s="' + rsec + '" data-l="' + esc(grpName(n) + ' ' + g) + '" aria-label="Iniciar descanso de ' + esc(window.Cronometro.fmt(rsec)) + '">' + ic('timer', 16, 2) + 'Iniciar</button>' : '') + '</div>';
 }
 function strengthBlocks(items, logDate, planDate, ctx){
   var labs = groupLabels(items), out = '', i = 0, n0 = 0;
@@ -2499,7 +2553,7 @@ function strengthBlocks(items, logDate, planDate, ctx){
     if (!g) { out += vExCard(items[i], { logDate: logDate, planDate: planDate, ctx: ctx }); i++; continue; }
     var j = i; while (j < items.length && items[j].g === g) j++;
     var run = items.slice(i, j);
-    out += grpHead(run, g, n0++);
+    out += grpHead(run, g, n0++, !!logDate);
     run.forEach(function(it){ out += vExCard(it, { lab: labs[it.k], grouped: true, logDate: logDate, planDate: planDate, ctx: ctx }); });
     i = j;
   }
@@ -2858,8 +2912,8 @@ function ordenArrastre(c, k, ks){
 }
 function applyOrder(c, type, sameOrdered){ var q = sameOrdered.slice(); c.items = c.items.map(function(x){ return isCardio(x) === type ? q.shift() : x; }); }
 /* copiar una semana escribe cada día como su propio documento; un destino con algún día bloqueado no se toca */
-function copyWeek(src, dst){ var s = S.weeks[src]; if (!s || weekBlocked(dst)) return; var w = S.weeks[dst] || (S.weeks[dst] = emptyWeek(dst)); w._local = true; w.blank = false; s.days.forEach(function(d, i){ w.days[i] = { name: d.name, rest: d.rest, tipo: d.tipo || null, items: cloneItems(d.items) }; }); markWeekDays(dst); }
-function loadTipo(ctx, id){ var t = S.tipos[id], d = getCont(ctx); if (!t || !d) return; d.name = t.name; d.items = lastKg(cloneItems(t.items), ctx.kind === 'day' ? fechaDe(ctx.ws, ctx.i) : null); d.tipo = id; d.rest = false; markDirty(ctx); }
+function copyWeek(src, dst){ var s = S.weeks[src]; if (!s || weekBlocked(dst)) return; var w = S.weeks[dst] || (S.weeks[dst] = emptyWeek(dst)); w._local = true; w.blank = false; s.days.forEach(function(d, i){ w.days[i] = copiarBloques({ name: d.name, rest: d.rest, tipo: d.tipo || null, items: cloneItems(d.items) }, d); }); markWeekDays(dst); }
+function loadTipo(ctx, id){ var t = S.tipos[id], d = getCont(ctx); if (!t || !d) return; d.name = t.name; d.items = lastKg(cloneItems(t.items), ctx.kind === 'day' ? fechaDe(ctx.ws, ctx.i) : null); d.tipo = id; d.rest = false; copiarBloques(d, t); markDirty(ctx); }
 /* trae el peso más alto que anotaste la última vez en cada ejercicio */
 /* peso de partida de un día nuevo: el último usado y, si en la última sesión se llegó al tope del rango en todas las
    series con el mismo peso, la siguiente carga del equipo, marcada en sug ("de>a") para poder deshacerla */
@@ -2885,7 +2939,7 @@ function copyFromTipos(src, dst){
   var w = S.weeks[dst] || (S.weeks[dst] = emptyWeek(dst)); w._local = true; w.blank = false;
   s.days.forEach(function(d, i){
     var t = d.tipo && S.tipos[d.tipo];
-    w.days[i] = t ? { name: t.name, rest: false, tipo: d.tipo, items: lastKg(cloneItems(t.items), fechaDe(dst, i)) } : { name: d.name, rest: d.rest, tipo: null, items: lastKg(cloneItems(d.items), fechaDe(dst, i)) };
+    w.days[i] = t ? copiarBloques({ name: t.name, rest: false, tipo: d.tipo, items: lastKg(cloneItems(t.items), fechaDe(dst, i)) }, t) : copiarBloques({ name: d.name, rest: d.rest, tipo: null, items: lastKg(cloneItems(d.items), fechaDe(dst, i)) }, d);
   });
   markWeekDays(dst);
 }
@@ -2913,7 +2967,7 @@ function saveAsTipo(ctx, name){
   var d = getCont(ctx); name = (name || '').trim() || d.name || 'Día tipo';
   var existing = tiposList().find(function(t){ return norm(t.name) === norm(name); });
   var id = existing ? existing.id : 't_' + uid();
-  S.tipos[id] = { id: id, name: name, items: cloneItems(d.items), ejemplo: false };
+  S.tipos[id] = copiarBloques({ id: id, name: name, items: cloneItems(d.items), ejemplo: false }, d);
   markKey('t:' + id); d.tipo = id; if (!d.name) d.name = name; markDirty(ctx);
   return existing ? 'Día tipo ' + name + ' actualizado; se guarda solo.' : name + ' quedó como día tipo; se guarda solo.';
 }
@@ -3050,7 +3104,11 @@ document.addEventListener('click', function(e){
     case 'tipo-del': S.confirm = 'tipodel'; render(); break;
     case 'tipo-del-ok': var tname = (S.tipos[t.id] || {}).name; delete S.tipos[t.id]; markKey('t:' + t.id); S.stack.pop(); S.confirm = null; render({ nav: true }); showToast('Quitaste ' + (tname || 'el día tipo') + ' de tus días tipo.'); break;
     case 'day-clear': if (dayKept(ctx)) { showToast('Este día tiene entrenamientos registrados; se conserva.'); break; } S.confirm = 'dayclear'; render(); break;
-    case 'day-clear-ok': var dd = getCont(ctx); if (!dd || dayKept(ctx)) { S.confirm = null; render(); break; } dd.items = []; dd.name = ''; dd.rest = false; dd.tipo = null; markDirty(ctx); S.confirm = null; render(); break;
+    case 'bloque-edit': S.bloqueEdit = el.dataset.s; render(); break;
+    case 'bloque-add': { var ba = getCont(ctx); if (!ba) break; var bs = el.dataset.s; ba[bs] = (ba[bs] || []).concat([{ n: '', t: '' }]); markDirty(ctx); render(); var bi = document.querySelector('[data-f="bloque"][data-s="' + bs + '"][data-i="' + (ba[bs].length - 1) + '"][data-p="n"]'); if (bi) bi.focus(); break; }
+    case 'bloque-del': { var bd = getCont(ctx); if (!bd) break; var bds = el.dataset.s; bd[bds] = (bd[bds] || []).filter(function(x, i){ return i !== +el.dataset.i; }); if (!bd[bds].length) { delete bd[bds]; delete bd[BLOQUE_OK[bds]]; } markDirty(ctx); render(); break; }
+    case 'bloque-def': { var bf = getCont(ctx); if (!bf) break; bf[el.dataset.s] = bloqueDef(el.dataset.s, el.dataset.q); markDirty(ctx); render(); break; }
+    case 'day-clear-ok': var dd = getCont(ctx); if (!dd || dayKept(ctx)) { S.confirm = null; render(); break; } dd.items = []; dd.name = ''; dd.rest = false; dd.tipo = null; copiarBloques(dd, null); markDirty(ctx); S.confirm = null; render(); break;
     case 'hist-copy': if (weekKept(S.ws)) { showToast('Esta semana tiene entrenamientos registrados; se conserva. Copia sobre una semana sin registros.'); break; } if (S.weeks[S.ws] && hasContent(S.weeks[S.ws])) { S.confirm = 'hist:' + d.ws; render(); } else { copyWeek(d.ws, S.ws); S.tab = 'semana'; S.stack = []; S.confirm = null; render({ nav: true }); showToast('Copiaste ' + weekLabel(d.ws) + ' en ' + weekLabel(S.ws)); } break;
     case 'hist-copy-ok': if (weekKept(S.ws)) { S.confirm = null; render(); showToast('Esta semana tiene entrenamientos registrados; se conserva.'); break; } copyWeek(d.ws, S.ws); S.tab = 'semana'; S.stack = []; S.confirm = null; render({ nav: true }); showToast('Copiaste ' + weekLabel(d.ws) + ' en ' + weekLabel(S.ws)); break;
     case 'open-hist': push({ v: 'hist' }); break;
@@ -3173,6 +3231,7 @@ document.addEventListener('click', function(e){
 document.addEventListener('input', function(e){
   var el = e.target, f = el.dataset && el.dataset.f; if (!f) return;
   if (f === 'name') { var c = getCont(curCtx()); if (c) { c.name = el.value; markDirty(curCtx()); } }
+  else if (f === 'bloque') { var bc = getCont(curCtx()); if (bc && bc[el.dataset.s] && bc[el.dataset.s][+el.dataset.i]) { bc[el.dataset.s][+el.dataset.i][el.dataset.p] = el.value; markDirty(curCtx()); } }
   else if (f === 'item') {
     var ictx = curCtx(), cc = getCont(ictx); if (!cc) return;
     var it = cc.items.find(function(x){ return x.k === el.dataset.k; }); if (!it) return;
@@ -3210,7 +3269,8 @@ document.addEventListener('change', function(e){
     var nctx = curCtx(), nc = getCont(nctx), nit = nc && nc.items.find(function(x){ return x.k === el.dataset.k; });
     if (nit) settleField(el, nctx, nit, f === 'item' ? el.dataset.p : f + '|' + el.dataset.i);
   }
-  if (f === 'rest') { var ctx = curCtx(), c = getCont(ctx); if (c) { c.rest = el.checked; markDirty(ctx); render(); } }
+  if (f === 'bloqueok') { var okc = getCont(curCtx()); if (okc) { if (el.checked) okc[BLOQUE_OK[el.dataset.s]] = true; else delete okc[BLOQUE_OK[el.dataset.s]]; markDirty(curCtx()); var okb = el.closest('.sechead') && el.closest('.sechead').nextElementSibling; if (okb) okb.classList.toggle('ok', el.checked); } }
+  else if (f === 'rest') { var ctx = curCtx(), c = getCont(ctx); if (c) { c.rest = el.checked; markDirty(ctx); render(); } }
   else if (f === 'item' && el.dataset.p === 'sets') {
     var sc = getCont(curCtx()), sit = sc && sc.items.find(function(x){ return x.k === el.dataset.k; });
     if (sit && byData('[data-vol]', 'vol', sit.k).length && byData('[data-f="hr"]', 'k', sit.k).length !== logN(sit)) {

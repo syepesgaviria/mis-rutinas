@@ -584,3 +584,21 @@ main.shell:focus{outline:none}
 }
 @media (max-width:360px){.strip{gap:12px}.f4{gap:6px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* calentamiento y estiramiento */
+.okchk{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--muted);min-height:28px}
+.okchk input{width:18px;height:18px;accent-color:var(--accent)}
+.bloque{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px 10px 2px}
+.bloque.ok{opacity:.6}
+.bloque.ok .brow .inp{text-decoration:line-through}
+.brow{display:grid;grid-template-columns:minmax(0,1fr) 104px 36px;gap:6px;align-items:center}
+.brow .inp{min-height:40px;font-size:14px;padding:6px 10px}
+.bsteps{margin:2px 0 0;padding:0 0 0 22px;display:flex;flex-direction:column;gap:6px;font-size:14.5px;line-height:1.35}
+.bsteps li{padding-left:2px}
+.bsteps li span{color:var(--text)}
+.bsteps li b{color:var(--muted);font-weight:700;white-space:nowrap}
+.bsteps li b::before{content:' · '}
+.bloque.ok .bsteps{text-decoration:line-through}
+.brow .iconbtn{width:36px;height:36px}
+.bloque .linkbtn{align-self:flex-start;min-height:40px}
+.bloque .hint.small{margin:2px 0 0}
