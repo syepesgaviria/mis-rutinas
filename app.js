@@ -1997,7 +1997,7 @@ function perfilRow(){
 /* DATOS Y RESPALDO: todo vive en este dispositivo; el respaldo es un archivo JSON con colecciones y fotos */
 function rtRespaldo(){ var rt = window.RutinasRuntime; return rt && rt.respaldo ? rt.respaldo : null; }
 function respInfo(){ var r = rtRespaldo(); try { return r ? r.info() : null; } catch (e) { return null; } }
-function fechaCorta(iso){ var d = iso ? new Date(iso) : null; if (!d || isNaN(d.getTime())) return ''; return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
+function fechaCorta(iso){ var d = !iso ? null : /^\d{4}-\d{2}-\d{2}$/.test(String(iso)) ? parseIso(iso) : new Date(iso); if (!d || isNaN(d.getTime())) return ''; return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
 function vAvisoRespaldo(){
   var i = respInfo(); if (!i || !i.recomendar || S.dbState !== 'ok') return '';
   var t = i.ultimo ? 'Hay cambios desde el último respaldo (' + esc(fechaCorta(i.ultimo)) + ').' : 'Aún no has guardado ningún respaldo de tus datos.';
@@ -2213,13 +2213,13 @@ function corrAplicar(modo, delta){
   var n = 0, r = corrResumen(modo, delta), f = corrFn(modo, delta);
   Object.keys(S.tipos).forEach(function(id){ var t = S.tipos[id], c = 0; t.items.forEach(function(it){ if (corrAplica(it, modo)) c += f(it); }); if (c) { n += c; markKey('t:' + id); } });
   Object.keys(S.weeks).forEach(function(ws){ if (weekBlocked(ws)) return; S.weeks[ws].days.forEach(function(d, i){ var c = 0; d.items.forEach(function(it){ if (corrAplica(it, modo)) c += f(it); }); if (c) { n += c; markDirty({ kind: 'day', ws: ws, i: i }); } }); });
-  var cfg = cicloCfg(); cfg.correcciones = (cfg.correcciones || []).concat([{ fecha: new Date().toISOString().slice(0, 10), modo: modo, delta: delta, dias: r.dias, tipos: r.tipos, valores: n }]);
+  var cfg = cicloCfg(); cfg.correcciones = (cfg.correcciones || []).concat([{ fecha: iso(new Date()), modo: modo, delta: delta, dias: r.dias, tipos: r.tipos, valores: n }]);
   S.cicloDocs.principal = cfg; markKey('k:principal');
   return n;
 }
 function corrTitulo(modo, delta){ return CORR_NOMBRES[modo] + (delta === 'discos' ? ', ajuste a los discos reales' : ', ' + (delta > 0 ? '+' : '') + fmtKg(delta) + ' kg'); }
 function vCorreccion(c){
-  var f = S.corr || { modo: 'barra', delta: '-5' }, b = '<div class="sechead"><h2>Corrección de cargas</h2></div>';
+  var f = S.corr || { modo: 'barra', delta: (c.correcciones || []).length ? '' : '-5' }, b = '<div class="sechead"><h2>Corrección de cargas</h2></div>';
   b += '<p class="hint small">Si un peso estaba mal medido (la barra pesa 15 kg y no 20), aplica la diferencia de una vez a todo lo que usa ese equipo: pesos planeados, series anotadas y propuestas, en los días tipo y en todas las semanas. No se puede deshacer: guarda un respaldo antes.</p>';
   b += '<div class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="corr-modo">Equipo</label><select id="corr-modo" class="inp" data-f="corr" data-p="modo">' + Object.keys(CORR_NOMBRES).map(function(k){ return '<option value="' + k + '"' + (f.modo === k ? ' selected' : '') + '>' + CORR_NOMBRES[k] + '</option>'; }).join('') + '</select></div>' +
     '<div class="field"><label for="corr-delta">Diferencia en kg (negativa para restar)</label><input id="corr-delta" class="inp" data-f="corr" data-p="delta" value="' + esc(f.delta) + '" inputmode="text" autocomplete="off" placeholder="-5"></div>';
@@ -3068,8 +3068,8 @@ document.addEventListener('click', function(e){
     case 'ciclo-dia': var cdi = +d.i, cpos = t.dias.indexOf(cdi); if (cpos >= 0) t.dias.splice(cpos, 1); else t.dias.push(cdi); t.dias.sort(function(a, b){ return a - b; }); render(); break;
     case 'ciclo-ok': aplicarCiclo(t); break;
     case 'ciclo-descarga': t.descarga = !!el.checked; render(); break;
-    case 'corr-revisar': S.corr = S.corr || { modo: 'barra', delta: '-5' }; if (!num(S.corr.delta)) { showToast('Escribe la diferencia en kg, por ejemplo -5.'); break; } S.corr.discos = false; S.corr.resumen = corrResumen(S.corr.modo, num(S.corr.delta)); S.confirm = 'corregir'; render(); break;
-    case 'corr-discos': S.corr = S.corr || { modo: 'barra', delta: '-5' }; if (S.corr.modo !== 'barra' && S.corr.modo !== 'barraez') S.corr.modo = 'barra'; S.corr.discos = true; S.corr.resumen = corrResumen(S.corr.modo, 'discos'); if (!S.corr.resumen.valores) { showToast('Todos los pesos de ' + CORR_NOMBRES[S.corr.modo].toLowerCase() + ' ya coinciden con los discos.'); S.corr.discos = false; break; } S.confirm = 'corregir'; render(); break;
+    case 'corr-revisar': S.corr = S.corr || { modo: 'barra', delta: (cicloCfg().correcciones || []).length ? '' : '-5' }; if (!num(S.corr.delta)) { showToast('Escribe la diferencia en kg, por ejemplo -5.'); break; } S.corr.discos = false; S.corr.resumen = corrResumen(S.corr.modo, num(S.corr.delta)); S.confirm = 'corregir'; render(); break;
+    case 'corr-discos': S.corr = S.corr || { modo: 'barra', delta: (cicloCfg().correcciones || []).length ? '' : '-5' }; if (S.corr.modo !== 'barra' && S.corr.modo !== 'barraez') S.corr.modo = 'barra'; S.corr.discos = true; S.corr.resumen = corrResumen(S.corr.modo, 'discos'); if (!S.corr.resumen.valores) { showToast('Todos los pesos de ' + CORR_NOMBRES[S.corr.modo].toLowerCase() + ' ya coinciden con los discos.'); S.corr.discos = false; break; } S.confirm = 'corregir'; render(); break;
     case 'corr-cancel': S.confirm = null; if (S.corr) { S.corr.resumen = null; S.corr.discos = false; } render(); break;
     case 'corr-aplicar': if (S.corr && S.confirm === 'corregir') { var cn = corrAplicar(S.corr.modo, S.corr.discos ? 'discos' : num(S.corr.delta)); S.confirm = null; S.corr = null; showToast('Corrección aplicada: ' + cn + ' valores ajustados.'); render(); } break;
     case 'descarga-armar': var dws = shiftWeek(curMonday(), 1); openCiclo(S.weeks[dws] && hasContent(S.weeks[dws]) ? 'reorg' : 'armar', dws, true); break;
@@ -3225,7 +3225,7 @@ document.addEventListener('change', function(e){
   }
   else if (f === 'photo') { uploadPhoto(el.files && el.files[0]); el.value = ''; }
   else if (f === 'resp-file') { respaldoElegir(el.files && el.files[0]); el.value = ''; }
-  else if (f === 'corr') { S.corr = S.corr || { modo: 'barra', delta: '-5' }; S.corr[el.dataset.p] = el.value; S.corr.resumen = null; S.corr.discos = false; if (S.confirm === 'corregir') { S.confirm = null; render(); } }
+  else if (f === 'corr') { S.corr = S.corr || { modo: 'barra', delta: (cicloCfg().correcciones || []).length ? '' : '-5' }; S.corr[el.dataset.p] = el.value; S.corr.resumen = null; S.corr.discos = false; if (S.confirm === 'corregir') { S.confirm = null; render(); } }
   else if (f === 'equipo') {
     var ep = el.dataset.p, ev = el.value;
     /* sin volver a dibujar la pantalla (el campo sigue con el foco): se guarda y se actualiza solo el texto de cargas */
