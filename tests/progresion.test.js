@@ -99,4 +99,14 @@ prueba('discosPara: la combinación por lado más cercana a la carga', () => {
   assert.deepStrictEqual(P.discosPara(45, { barra: 15, discos: [5, 10, 15] }, 'barra').porLado, [15], 'en empate gana la de menos discos');
 });
 
+prueba('ajustarADiscos lleva cada peso a la carga real más cercana y cuenta solo lo que cambia', () => {
+  const fmt = x => String(x).replace('.', ',');
+  const eq = { barra: 15, discos: [5, 6.8, 10, 15.9] };
+  const it = { kg: '60', hk: '50|50|60', hr: '12,12,10', sug: '50>56.8' };
+  assert.strictEqual(P.ajustarADiscos(it, eq, 'barra', fmt), 5, '60, 50, 50, 60 y la propuesta (de 50 a 48,6; a 56,8 queda igual)');
+  assert.deepStrictEqual(it, { kg: '60,4', hk: '48,6|48,6|60,4', hr: '12,12,10', sug: '48.6>56.8' });
+  const ok = { kg: '45', hk: '45|45|' }; assert.strictEqual(P.ajustarADiscos(ok, eq, 'barra', fmt), 0, 'lo que ya es exacto no se toca'); assert.strictEqual(ok.hk, '45|45|');
+  const bajo = { kg: '10' }; assert.strictEqual(P.ajustarADiscos(bajo, eq, 'barra', fmt), 0, 'por debajo de la barra no se inventa nada');
+});
+
 console.log(n + ' pruebas pasadas' + (process.exitCode ? ', con fallos' : ''));

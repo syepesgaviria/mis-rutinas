@@ -62,15 +62,22 @@ function evaluar(L, top, needSets){
   return { estado: !full ? 'incompleto' : !uni ? 'distintos' : !reached ? 'mantener' : 'sube', need: need, w0: w0, hechas: L.sets.length };
 }
 
-/* corrección de cargas: suma delta (negativo para restar) al peso planeado, a cada serie anotada con peso propio y a la
-   propuesta guardada. fmt escribe el número como lo guarda la app. Devuelve cuántos valores cambió */
-function corregirItem(it, delta, fmt){
+/* corrección de cargas: aplica f (número → número) al peso planeado, a cada serie anotada con peso propio y a la
+   propuesta guardada. fmt escribe el número como lo guarda la app. Devuelve cuántos valores cambiaron de verdad */
+function mapearItem(it, f, fmt){
   var n = 0, num = function(v){ var x = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(x) ? x : null; };
-  var ajustar = function(v){ var x = num(v); if (x == null || x <= 0) return null; return fmt(Math.max(0, Math.round((x + delta) * 10) / 10)); };
+  var ajustar = function(v){ var x = num(v); if (x == null || x <= 0) return null; var y = Math.max(0, r1(f(x))); return Math.abs(y - x) < 0.05 ? null : fmt(y); };
   var kg = ajustar(it.kg); if (kg != null) { it.kg = kg; n++; }
   if (it.hk) { var partes = String(it.hk).split('|').map(function(v){ var a = String(v).trim() === '' ? null : ajustar(v); if (a != null) { n++; return a; } return v; }); it.hk = partes.join('|'); }
-  var sg = leerSug(it.sug); if (sg) { it.sug = escribirSug(Math.max(0, sg.de + delta), Math.max(0, sg.a + delta)); n++; }
+  var sg = leerSug(it.sug);
+  if (sg) { var de = Math.max(0, r1(f(sg.de))), a = Math.max(0, r1(f(sg.a))); if (Math.abs(de - sg.de) >= 0.05 || Math.abs(a - sg.a) >= 0.05) { it.sug = escribirSug(de, a); n++; } }
   return n;
+}
+/* suma delta (negativo para resta) a todo */
+function corregirItem(it, delta, fmt){ return mapearItem(it, function(x){ return x + delta; }, fmt); }
+/* lleva cada peso a la carga real más cercana que se arma con la barra y los discos */
+function ajustarADiscos(it, eq, modalidad, fmt){
+  return mapearItem(it, function(x){ var d = discosPara(x, eq, modalidad); return d ? d.total : x; }, fmt);
 }
 
 /* qué discos poner por lado para una carga: la combinación (un par de cada disco) que más se acerque; empates, la de
@@ -93,5 +100,5 @@ function discosPara(kg, eq, modalidad){
 function leerSug(s){ var m = String(s || '').split('>'); if (m.length !== 2) return null; var de = parseFloat(m[0]), a = parseFloat(m[1]); return isFinite(de) && isFinite(a) ? { de: de, a: a } : null; }
 function escribirSug(de, a){ return String(r1(de)) + '>' + String(r1(a)); }
 
-window.Progresion = { EQUIPO: EQUIPO, normalizarEquipo: normalizarEquipo, cargasBarra: cargasBarra, siguiente: siguiente, evaluar: evaluar, leerSug: leerSug, escribirSug: escribirSug, corregirItem: corregirItem, discosPara: discosPara };
+window.Progresion = { EQUIPO: EQUIPO, normalizarEquipo: normalizarEquipo, cargasBarra: cargasBarra, siguiente: siguiente, evaluar: evaluar, leerSug: leerSug, escribirSug: escribirSug, corregirItem: corregirItem, ajustarADiscos: ajustarADiscos, mapearItem: mapearItem, discosPara: discosPara };
 })();

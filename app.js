@@ -2190,31 +2190,46 @@ function cicloCard(){
 var CORR_MODOS = { barra: ['barra'], barraez: ['barraez'], mancuernas: ['dos', 'una'], polea: ['polea'] };
 var CORR_NOMBRES = { barra: 'Barra', barraez: 'Barra EZ', mancuernas: 'Mancuernas', polea: 'Polea' };
 function corrAplica(it, modo){ if (isCardio(it)) return false; var m = modalidadDe(exById(it.ex)); return (CORR_MODOS[modo] || []).indexOf(m) >= 0; }
-function corrResumen(modo){
-  var r = { tipos: 0, exTipos: 0, dias: 0, exDias: 0, series: 0 };
-  Object.keys(S.tipos).forEach(function(id){ var n = S.tipos[id].items.filter(function(it){ return corrAplica(it, modo); }).length; if (n) { r.tipos++; r.exTipos += n; } });
-  Object.keys(S.weeks).forEach(function(ws){ if (weekBlocked(ws)) return; S.weeks[ws].days.forEach(function(d){ var its = d.items.filter(function(it){ return corrAplica(it, modo); }); if (its.length) { r.dias++; r.exDias += its.length; its.forEach(function(it){ r.series += kgRaw(it).filter(function(v){ return String(v).trim() !== ''; }).length; }); } }); });
+/* cambio a aplicar a un ítem: suma fija (delta) o ajuste a los discos reales */
+function corrFn(modo, delta){
+  var eq = cicloCfg().equipo;
+  if (delta === 'discos') return function(it){ return window.Progresion.ajustarADiscos(it, eq, modalidadDe(exById(it.ex)), fmtKg); };
+  return function(it){ return window.Progresion.corregirItem(it, delta, fmtKg); };
+}
+/* cuenta qué cambiaría sin tocar nada (trabaja sobre copias) */
+function corrResumen(modo, delta){
+  var r = { tipos: 0, exTipos: 0, dias: 0, exDias: 0, series: 0, valores: 0 }, f = corrFn(modo, delta);
+  var prueba = function(it){
+    var c = JSON.parse(JSON.stringify(it)), n = f(c); if (!n) return false;
+    r.valores += n; var a = String(it.hk || '').split('|'), b = String(c.hk || '').split('|');
+    a.forEach(function(v, i){ if (String(v) !== String(b[i])) r.series++; });
+    return true;
+  };
+  Object.keys(S.tipos).forEach(function(id){ var n = S.tipos[id].items.filter(function(it){ return corrAplica(it, modo) && prueba(it); }).length; if (n) { r.tipos++; r.exTipos += n; } });
+  Object.keys(S.weeks).forEach(function(ws){ if (weekBlocked(ws)) return; S.weeks[ws].days.forEach(function(d){ var n = d.items.filter(function(it){ return corrAplica(it, modo) && prueba(it); }).length; if (n) { r.dias++; r.exDias += n; } }); });
   return r;
 }
 function corrAplicar(modo, delta){
-  var n = 0, r = corrResumen(modo);
-  Object.keys(S.tipos).forEach(function(id){ var t = S.tipos[id], c = 0; t.items.forEach(function(it){ if (corrAplica(it, modo)) c += window.Progresion.corregirItem(it, delta, fmtKg); }); if (c) { n += c; markKey('t:' + id); } });
-  Object.keys(S.weeks).forEach(function(ws){ if (weekBlocked(ws)) return; S.weeks[ws].days.forEach(function(d, i){ var c = 0; d.items.forEach(function(it){ if (corrAplica(it, modo)) c += window.Progresion.corregirItem(it, delta, fmtKg); }); if (c) { n += c; markDirty({ kind: 'day', ws: ws, i: i }); } }); });
+  var n = 0, r = corrResumen(modo, delta), f = corrFn(modo, delta);
+  Object.keys(S.tipos).forEach(function(id){ var t = S.tipos[id], c = 0; t.items.forEach(function(it){ if (corrAplica(it, modo)) c += f(it); }); if (c) { n += c; markKey('t:' + id); } });
+  Object.keys(S.weeks).forEach(function(ws){ if (weekBlocked(ws)) return; S.weeks[ws].days.forEach(function(d, i){ var c = 0; d.items.forEach(function(it){ if (corrAplica(it, modo)) c += f(it); }); if (c) { n += c; markDirty({ kind: 'day', ws: ws, i: i }); } }); });
   var cfg = cicloCfg(); cfg.correcciones = (cfg.correcciones || []).concat([{ fecha: new Date().toISOString().slice(0, 10), modo: modo, delta: delta, dias: r.dias, tipos: r.tipos, valores: n }]);
   S.cicloDocs.principal = cfg; markKey('k:principal');
   return n;
 }
+function corrTitulo(modo, delta){ return CORR_NOMBRES[modo] + (delta === 'discos' ? ', ajuste a los discos reales' : ', ' + (delta > 0 ? '+' : '') + fmtKg(delta) + ' kg'); }
 function vCorreccion(c){
   var f = S.corr || { modo: 'barra', delta: '-5' }, b = '<div class="sechead"><h2>Corrección de cargas</h2></div>';
   b += '<p class="hint small">Si un peso estaba mal medido (la barra pesa 15 kg y no 20), aplica la diferencia de una vez a todo lo que usa ese equipo: pesos planeados, series anotadas y propuestas, en los días tipo y en todas las semanas. No se puede deshacer: guarda un respaldo antes.</p>';
   b += '<div class="card" style="display:flex;flex-direction:column;gap:12px"><div class="field"><label for="corr-modo">Equipo</label><select id="corr-modo" class="inp" data-f="corr" data-p="modo">' + Object.keys(CORR_NOMBRES).map(function(k){ return '<option value="' + k + '"' + (f.modo === k ? ' selected' : '') + '>' + CORR_NOMBRES[k] + '</option>'; }).join('') + '</select></div>' +
     '<div class="field"><label for="corr-delta">Diferencia en kg (negativa para restar)</label><input id="corr-delta" class="inp" data-f="corr" data-p="delta" value="' + esc(f.delta) + '" inputmode="text" autocomplete="off" placeholder="-5"></div>';
   if (S.confirm === 'corregir' && f.resumen) {
-    var r = f.resumen, d = num(f.delta);
-    b += '<div class="confirm"><p><b>' + CORR_NOMBRES[f.modo] + ', ' + (d > 0 ? '+' : '') + esc(fmtKg(d)) + ' kg</b></p><p>Cambia ' + r.exTipos + (r.exTipos === 1 ? ' ejercicio' : ' ejercicios') + ' en ' + r.tipos + (r.tipos === 1 ? ' día tipo' : ' días tipo') + ', y ' + r.exDias + (r.exDias === 1 ? ' ejercicio' : ' ejercicios') + ' en ' + r.dias + (r.dias === 1 ? ' día' : ' días') + ' con ' + r.series + ' series anotadas con peso propio.</p><p>No se puede deshacer.</p><div class="row2"><button type="button" class="btn btn-danger-solid" data-a="corr-aplicar">Aplicar</button><button type="button" class="btn" data-a="corr-cancel">Cancelar</button></div></div>';
+    var r = f.resumen, d = f.discos ? 'discos' : num(f.delta);
+    b += '<div class="confirm"><p><b>' + esc(corrTitulo(f.modo, d)) + '</b></p><p>Cambia ' + r.exTipos + (r.exTipos === 1 ? ' ejercicio' : ' ejercicios') + ' en ' + r.tipos + (r.tipos === 1 ? ' día tipo' : ' días tipo') + ', y ' + r.exDias + (r.exDias === 1 ? ' ejercicio' : ' ejercicios') + ' en ' + r.dias + (r.dias === 1 ? ' día' : ' días') + ' con ' + r.series + ' series anotadas con peso propio.</p><p>No se puede deshacer.</p><div class="row2"><button type="button" class="btn btn-danger-solid" data-a="corr-aplicar">Aplicar</button><button type="button" class="btn" data-a="corr-cancel">Cancelar</button></div></div>';
   } else b += '<div class="row2"><button type="button" class="btn" data-a="corr-revisar">Revisar qué cambiaría</button></div>';
+  if (S.confirm !== 'corregir' || !f.discos) b += '<hr class="sep"><p class="hint small">Si anotaste pesos redondos que no se arman con tus discos (50 cuando lo real es 48,6), esto lleva cada peso de barra o barra EZ a la carga real más cercana, con el equipo de arriba.</p><div class="row2"><button type="button" class="btn" data-a="corr-discos">Ajustar a los discos reales</button></div>';
   var hist = (c.correcciones || []).slice(-5).reverse();
-  if (hist.length) b += '<p class="hint small">Aplicadas: ' + esc(hist.map(function(h){ return fechaCorta(h.fecha) + ' ' + (CORR_NOMBRES[h.modo] || h.modo) + ' ' + (h.delta > 0 ? '+' : '') + fmtKg(h.delta) + ' kg (' + h.valores + ' valores)'; }).join(' · ')) + '</p>';
+  if (hist.length) b += '<p class="hint small">Aplicadas: ' + esc(hist.map(function(h){ return fechaCorta(h.fecha) + ' ' + (CORR_NOMBRES[h.modo] || h.modo) + ' ' + (h.delta === 'discos' ? 'ajuste a discos' : (h.delta > 0 ? '+' : '') + fmtKg(h.delta) + ' kg') + ' (' + h.valores + ' valores)'; }).join(' · ')) + '</p>';
   return b + '</div>';
 }
 function vCicloCfg(){
@@ -3053,9 +3068,10 @@ document.addEventListener('click', function(e){
     case 'ciclo-dia': var cdi = +d.i, cpos = t.dias.indexOf(cdi); if (cpos >= 0) t.dias.splice(cpos, 1); else t.dias.push(cdi); t.dias.sort(function(a, b){ return a - b; }); render(); break;
     case 'ciclo-ok': aplicarCiclo(t); break;
     case 'ciclo-descarga': t.descarga = !!el.checked; render(); break;
-    case 'corr-revisar': S.corr = S.corr || { modo: 'barra', delta: '-5' }; if (!num(S.corr.delta)) { showToast('Escribe la diferencia en kg, por ejemplo -5.'); break; } S.corr.resumen = corrResumen(S.corr.modo); S.confirm = 'corregir'; render(); break;
-    case 'corr-cancel': S.confirm = null; if (S.corr) S.corr.resumen = null; render(); break;
-    case 'corr-aplicar': if (S.corr && S.confirm === 'corregir') { var cn = corrAplicar(S.corr.modo, num(S.corr.delta)); S.confirm = null; S.corr = null; showToast('Corrección aplicada: ' + cn + ' valores ajustados.'); render(); } break;
+    case 'corr-revisar': S.corr = S.corr || { modo: 'barra', delta: '-5' }; if (!num(S.corr.delta)) { showToast('Escribe la diferencia en kg, por ejemplo -5.'); break; } S.corr.discos = false; S.corr.resumen = corrResumen(S.corr.modo, num(S.corr.delta)); S.confirm = 'corregir'; render(); break;
+    case 'corr-discos': S.corr = S.corr || { modo: 'barra', delta: '-5' }; if (S.corr.modo !== 'barra' && S.corr.modo !== 'barraez') S.corr.modo = 'barra'; S.corr.discos = true; S.corr.resumen = corrResumen(S.corr.modo, 'discos'); if (!S.corr.resumen.valores) { showToast('Todos los pesos de ' + CORR_NOMBRES[S.corr.modo].toLowerCase() + ' ya coinciden con los discos.'); S.corr.discos = false; break; } S.confirm = 'corregir'; render(); break;
+    case 'corr-cancel': S.confirm = null; if (S.corr) { S.corr.resumen = null; S.corr.discos = false; } render(); break;
+    case 'corr-aplicar': if (S.corr && S.confirm === 'corregir') { var cn = corrAplicar(S.corr.modo, S.corr.discos ? 'discos' : num(S.corr.delta)); S.confirm = null; S.corr = null; showToast('Corrección aplicada: ' + cn + ' valores ajustados.'); render(); } break;
     case 'descarga-armar': var dws = shiftWeek(curMonday(), 1); openCiclo(S.weeks[dws] && hasContent(S.weeks[dws]) ? 'reorg' : 'armar', dws, true); break;
     case 'descarga-despues': S.descargaIgnorada = shiftWeek(curMonday(), 1); render(); break;
     case 'open-ciclocfg': push({ v: 'ciclocfg' }); break;
@@ -3209,7 +3225,7 @@ document.addEventListener('change', function(e){
   }
   else if (f === 'photo') { uploadPhoto(el.files && el.files[0]); el.value = ''; }
   else if (f === 'resp-file') { respaldoElegir(el.files && el.files[0]); el.value = ''; }
-  else if (f === 'corr') { S.corr = S.corr || { modo: 'barra', delta: '-5' }; S.corr[el.dataset.p] = el.value; S.corr.resumen = null; if (S.confirm === 'corregir') { S.confirm = null; render(); } }
+  else if (f === 'corr') { S.corr = S.corr || { modo: 'barra', delta: '-5' }; S.corr[el.dataset.p] = el.value; S.corr.resumen = null; S.corr.discos = false; if (S.confirm === 'corregir') { S.confirm = null; render(); } }
   else if (f === 'equipo') {
     var ep = el.dataset.p, ev = el.value;
     /* sin volver a dibujar la pantalla (el campo sigue con el foco): se guarda y se actualiza solo el texto de cargas */

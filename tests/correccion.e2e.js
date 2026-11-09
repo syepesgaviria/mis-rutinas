@@ -78,6 +78,27 @@ const num = v => parseFloat(String(v == null ? '' : v).replace(',', '.'));
   ok(reg.length === 1 && reg[0].modo === 'barra' && reg[0].delta === -5 && reg[0].valores > 0, 'la corrección queda registrada en el ciclo: ' + JSON.stringify(reg[0]));
   ok(/Aplicadas: .*Barra -5 kg/.test(await page.locator('.vbody').innerText()), 'la pantalla muestra la corrección aplicada');
 
+  // segunda corrección: llevar los pesos de barra a la carga real más cercana con los discos
+  await page.click('[data-a="corr-discos"]'); await page.waitForSelector('[data-a="corr-aplicar"]');
+  const res2 = await page.locator('.confirm').innerText();
+  ok(/ajuste a los discos reales/.test(res2) && /ejercicio/.test(res2), 'el ajuste a discos muestra su resumen: ' + res2.replace(/\n/g, ' ').slice(0, 120));
+  await page.screenshot({ path: path.join(SALIDA, 'k4-discos-resumen.png'), fullPage: true });
+  await page.click('[data-a="corr-aplicar"]'); await page.waitForTimeout(1200);
+  const tras = await page.evaluate(() => {
+    const e = window.RutinasRuntime._pruebas.estado.cols, out = [];
+    Object.values(e.dias).forEach(d => (d.items || []).forEach(i => out.push({ ex: i.ex, kg: i.kg, hk: i.hk })));
+    Object.values(e.diasTipo).forEach(t => (t.items || []).forEach(i => out.push({ ex: i.ex, kg: i.kg, hk: i.hk })));
+    return { items: out, reg: e.ciclo.principal.correcciones };
+  });
+  const reales = [15, 25, 28.6, 35, 38.6, 45, 46.8, 48.6, 56.8, 58.6, 60.4, 66.8, 70.4, 76.8, 80.4, 90.4];
+  const esReal = v => { const x = num(v); return !(x > 0) || x < 15 || reales.some(r => Math.abs(r - x) < 0.05); };
+  const malos = tras.items.filter(i => antes.barra[i.ex]).filter(i => !esReal(i.kg) || String(i.hk || '').split('|').some(v => String(v).trim() !== '' && !esReal(v)));
+  ok(malos.length === 0, 'todos los pesos de barra quedan en cargas que se arman con la barra de 15 y los discos' + (malos.length ? ': ' + JSON.stringify(malos.slice(0, 3)) : ''));
+  ok(tras.reg.length === 2 && tras.reg[1].delta === 'discos' && tras.reg[1].valores > 0, 'el ajuste queda registrado: ' + JSON.stringify(tras.reg[1]));
+  ok(/ajuste a discos/.test(await page.locator('.vbody').innerText()), 'la pantalla lista el ajuste aplicado');
+  await page.click('[data-a="corr-discos"]'); await page.waitForTimeout(400);
+  ok(/ya coinciden/.test(await page.locator('.toast').innerText().catch(() => '')), 'repetirlo no encuentra nada que cambiar');
+
   // la semana sigue mostrando los pesos nuevos
   await page.click('[data-a="back"]'); await page.click('.bottomnav [data-t="semana"]'); await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(SALIDA, 'k3-semana.png'), fullPage: true });
