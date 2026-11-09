@@ -20,10 +20,10 @@ Los datos viven solo en el teléfono. En Progreso, Datos y respaldo, "Guardar re
 - `progresion.js`: lógica pura de progresión de cargas (cargas posibles con los discos, siguiente carga por equipo, evaluación de la última sesión, corrección de cargas cuando un peso estaba mal medido).
 - `cronometro.js`: cronómetro de descanso (cuenta por hora de fin, barra propia, descanso reproducido como pista de audio para que avise con el teléfono bloqueado y se vea en la pantalla de bloqueo, pantalla encendida).
 - `sw.js`: service worker generado; precachea la app completa para usarla sin conexión.
-- `img/`: fotos del catálogo (Free Exercise DB, dominio público) y dos ilustraciones esquemáticas.
+- `img/`: fotos del catálogo (Free Exercise DB, dominio público), ilustraciones esquemáticas (búlgara y sentadilla en la pared) e imágenes generadas con IA. Cada ejercicio lleva miniatura cuadrada (`<id>.jpg`) y dos fotos en 3:2 (`<id>_0.jpg` inicio, `<id>_1.jpg` final).
 - `fonts/`: Archivo (SIL Open Font License), empaquetada para funcionar sin conexión.
 - `tools/`: `build-sw.js` (genera `sw.js`), `servir.js` (servidor local de pruebas), `semilla.js` (convierte una exportación de la base anterior en un archivo de respaldo).
-- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js`, `progresion.test.js` y `cronometro.test.js` (lógica pura), `e2e.js`, `ciclo.e2e.js`, `progresion.e2e.js`, `descarga.e2e.js`, `cronometro.e2e.js`, `correccion.e2e.js` y `bloques.e2e.js` (recorridos a tamaño iPhone con Playwright).
+- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js`, `progresion.test.js` y `cronometro.test.js` (lógica pura), `catalogo.test.js` (coherencia del catálogo, sus alternativas y sus imágenes), `e2e.js`, `ciclo.e2e.js`, `progresion.e2e.js`, `descarga.e2e.js`, `cronometro.e2e.js`, `correccion.e2e.js` y `bloques.e2e.js` (recorridos a tamaño iPhone con Playwright sobre un respaldo real), y `pared.e2e.js` (cambio a un ejercicio por tiempo, con un respaldo mínimo que arma la propia prueba).
 
 ## Desarrollo
 
