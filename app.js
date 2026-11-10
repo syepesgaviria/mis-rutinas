@@ -347,7 +347,7 @@ function buildOp(key, now){
   if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras(serBloques({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t, false), t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
-  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; if (Array.isArray(nk.correcciones)) bk.correcciones = nk.correcciones.slice(-20); return { op: 'set', body: bk }; }
+  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; if (Array.isArray(nk.correcciones)) bk.correcciones = nk.correcciones.slice(-20); bk.cardio = { tipo: nk.cardio.tipo, dias: nk.cardio.dias }; return { op: 'set', body: bk }; }
   if (kind === 'f') { var pf = S.perfilDocs[id]; if (!pf) throw new Error('perfil ausente'); return { op: 'set', body: { estatura: pf.estatura, nacimiento: pf.nacimiento || pf._nac0 || '', sexo: pf.sexo === 'M' ? 'M' : 'H', updatedAt: now } }; }
   var c = S.custom[id]; if (!c) throw new Error('ejercicio ausente'); return { op: 'set', body: serCustom(c, now) };
 }
@@ -1007,7 +1007,7 @@ function subscribeCol(db, kind){
       if (kind === 'w') { Object.keys(S.legacyRaw).forEach(function(ws){ if (!S.legacy[ws]) delete S.legacyRaw[ws]; }); if (definitive(snap)) S.defin.w = true; rebuildWeeks(); if (S.defin.w) maybeAutoFill(); }
       if (kind === 'g') onMig(db);
     }
-    S.loaded[kind] = true; checkLoaded(); kickQueue(); requestRender();
+    S.loaded[kind] = true; checkLoaded(); cardioInicial(); kickQueue(); requestRender();
   }, function(e){ snapErr(col, e); });
 }
 /* el estado de migración decide el modo: mientras no esté completa, las semanas antiguas se leen como fuente de solo
@@ -2084,7 +2084,7 @@ function respaldoElegir(file){
 }
 function respaldoRestaurar(){
   var r = rtRespaldo(), f = S.dform; if (!r || !f || !f.insp || f.ocupado) return;
-  f.ocupado = true; render();
+  f.ocupado = true; S.restaurando = true; render();
   r.restaurar(f.insp).then(function(){ showToast('Datos restaurados. La app se vuelve a abrir.'); setTimeout(function(){ location.reload(); }, 600); }, function(e){ f.ocupado = false; S.confirm = null; f.err = 'No se pudo restaurar' + (e && e.message ? ': ' + e.message : '') + '.'; render(); });
 }
 function resumenDatos(n){
@@ -2117,6 +2117,7 @@ function cicloCfg(){
   if (doc) { c = window.Ciclo.normalizar(doc); c.orden = c.orden.filter(function(id){ return !!S.tipos[id]; }); }
   else { var porNombre = {}; tiposList().forEach(function(t){ var k = normNombre(t.name); if (!porNombre[k]) porNombre[k] = t.id; }); c = window.Ciclo.normalizar({ orden: CICLO_NOMBRES.map(function(k){ return porNombre[k]; }).filter(Boolean) }); }
   c.equipo = window.Progresion.normalizarEquipo(c.equipo);
+  if (c.cardio.tipo && !S.tipos[c.cardio.tipo]) c.cardio.tipo = null;
   return c;
 }
 function cicloEditar(fn){ var c = cicloCfg(); fn(c); S.cicloDocs.principal = c; markKey('k:principal'); render(); }
@@ -2179,12 +2180,50 @@ function openCiclo(modo, ws, descarga){
   push({ v: 'ciclo', ws: ws, modo: modo, n: n, dias: dias, from: 'Semana', descarga: descarga === undefined ? descargaInfo(ws).recomendar && !esDescarga(S.weeks[ws]) : !!descarga });
 }
 /* vista previa: qué recibe cada día según el modo */
+/* el cardio aparte entra en los descansos del plan que caen en sus días (no en los pasados) */
+function planConCardio(ws, plan){
+  var c = cicloCfg(), w = S.weeks[ws] || emptyWeek(ws);
+  var pasados = w.days.map(function(d, i){ return dayPast(ws, i) && !isToday(ws, i) ? i : -1; }).filter(function(i){ return i >= 0; });
+  var yaCardio = w.days.map(function(d, i){ return c.cardio.tipo && d.tipo === c.cardio.tipo && hasDayContent(d) && !d.rest ? i : -1; }).filter(function(i){ return i >= 0; });
+  return window.Ciclo.conCardio(plan, c.cardio, pasados, yaCardio);
+}
 function cicloPlan(t){
   var c = cicloCfg(), p = cicloPartida(t.ws);
-  if (t.modo !== 'reorg') return window.Ciclo.armar(c.orden, p.idx, t.dias);
+  if (t.modo !== 'reorg') return planConCardio(t.ws, window.Ciclo.armar(c.orden, p.idx, t.dias));
   var w = S.weeks[t.ws] || emptyWeek(t.ws);
   var dias = w.days.map(function(d, i){ return { i: i, tipo: d.tipo || null, hecho: diaHecho(d), pasado: dayPast(t.ws, i) && !isToday(t.ws, i), contenido: hasDayContent(d) && !d.rest }; });
-  return window.Ciclo.reorganizar(c.orden, p.idx, dias, t.dias);
+  return planConCardio(t.ws, window.Ciclo.reorganizar(c.orden, p.idx, dias, t.dias));
+}
+/* CARDIO APARTE. Santiago sacó el cardio de los días de pesas (9 nov 2026): va en un día tipo propio que se carga solo
+   en los días de descanso elegidos (miércoles y sábado por defecto). La primera vez, la app crea ese día tipo si no
+   existe uno llamado Cardio, lo deja configurado y llena los días de esta semana y la siguiente que estén libres */
+var CARDIO_TIPO = { name: 'Cardio', items: [{ ex: 'correr', min: '30', zona: 'Zona 2', note: 'Ritmo de caminar rápido o trote suave: puedes hablar en frases cortas.' }] };
+function cardioInicial(){
+  if (S.cardioInicialVisto || S.restaurando || S.dbState !== 'ok' || !S.loaded.k || !S.loaded.t || !S.defin.d || !S.proto.acquire) return;
+  var c = cicloCfg(); if (c.cardio.configurado) { S.cardioInicialVisto = true; return; }
+  if (c.orden.length < 2) return; /* sin ciclo armado no hay a qué sumarle cardio aparte */
+  S.cardioInicialVisto = true;
+  var existente = tiposList().find(function(t){ return normNombre(t.name) === 'cardio'; }), id = existente ? existente.id : 't_' + uid();
+  if (!existente) { S.tipos[id] = { id: id, name: CARDIO_TIPO.name, items: cloneItems(CARDIO_TIPO.items), ejemplo: false, _local: true }; markKey('t:' + id); }
+  c.cardio.tipo = id; c.cardio.configurado = true; S.cicloDocs.principal = c; markKey('k:principal');
+  var n = cardioLlenar(c), msg = (existente ? 'El día tipo Cardio' : 'Creé el día tipo Cardio (30 min en zona 2)') + ' queda para miércoles y sábado' + (n ? '; lo puse en ' + n + (n === 1 ? ' día libre' : ' días libres') + ' de esta semana y la siguiente' : '') + '. Se ajusta en Días tipo, Ciclo.';
+  showToast(msg); requestRender();
+}
+/* pone el día tipo de cardio en los días de cardio de esta semana y la siguiente que no tengan nada y no hayan pasado */
+function cardioLlenar(c){
+  if (!c.cardio.tipo) return 0;
+  var n = 0, cm = curMonday();
+  [cm, shiftWeek(cm, 1)].forEach(function(ws){
+    /* solo semanas ya armadas: una semana vacía se arma sola después y el cardio entra por el plan */
+    if (weekBlocked(ws) || !S.weeks[ws] || !hasContent(S.weeks[ws])) return;
+    c.cardio.dias.forEach(function(i){
+      if (dayPast(ws, i) && !isToday(ws, i)) return;
+      var ctx = { kind: 'day', ws: ws, i: i }, d = getCont(ctx); if (!d) return;
+      if (hasDayContent(d) && !d.rest) return;
+      loadTipo(ctx, c.cardio.tipo); n++;
+    });
+  });
+  return n;
 }
 function vCiclo(t){
   var c = cicloCfg(), plan = cicloPlan(t), hechos = t.modo === 'reorg' && S.weeks[t.ws] ? S.weeks[t.ws].days.filter(diaHecho).length : 0, nSel = t.dias.length + hechos, p = cicloPartida(t.modo === 'reorg' ? shiftWeek(t.ws, 1) : t.ws);
@@ -2236,7 +2275,7 @@ function autoFillCiclo(src, ws){
   var c = cicloCfg(); if (c.orden.length < 2) return false;
   var dias = S.weeks[src].days.map(function(d, i){ return !d.rest && d.items.some(function(it){ return !isCardio(it); }) ? i : -1; }).filter(function(i){ return i >= 0; });
   if (!dias.length) return false;
-  var p = cicloPartida(ws), plan = window.Ciclo.armar(c.orden, p.idx, dias);
+  var p = cicloPartida(ws), plan = planConCardio(ws, window.Ciclo.armar(c.orden, p.idx, dias));
   if (!aplicarPlanCiclo(ws, plan, 'armar')) return false;
   showToast('Semana armada con el ciclo: sigue en ' + tipoNombre(c.orden[p.idx]) + '. Toca Reorganizar si cambia el número de días.', function(){ clearWeekLocal(ws); });
   return true;
@@ -2308,6 +2347,12 @@ function vCicloCfg(){
     var sel = c.dias[n];
     return '<div class="field"><span class="lbl">' + n + ' sesiones</span><div class="chips wrap" role="group">' + DSHORT.map(function(ds, i){ return '<button type="button" class="chip" data-a="cc-dia" data-n="' + n + '" data-i="' + i + '" aria-pressed="' + (sel.indexOf(i) >= 0) + '">' + ds + '</button>'; }).join('') + '</div>' + (sel.length !== n ? '<p class="err">Marca ' + n + ' días (hay ' + sel.length + ').</p>' : '') + '</div>';
   }).join('') + '</div>';
+  var tiposCardio = tiposList().filter(function(t){ return c.orden.indexOf(t.id) < 0; });
+  b += '<div class="sechead"><h2>Cardio aparte</h2></div><p class="hint small">Un día tipo solo de cardio que se carga en estos días de descanso al armar la semana. Los días de pesas quedan para las pesas.</p><div class="card" style="display:flex;flex-direction:column;gap:12px">' +
+    '<div class="field"><label for="cardio-tipo">Día tipo</label><select id="cardio-tipo" class="inp" data-f="cardio" data-p="tipo"><option value=""' + (c.cardio.tipo ? '' : ' selected') + '>Ninguno</option>' + tiposCardio.map(function(t){ return '<option value="' + esc(t.id) + '"' + (c.cardio.tipo === t.id ? ' selected' : '') + '>' + esc(t.name || 'Sin nombre') + '</option>'; }).join('') + '</select></div>' +
+    (tiposCardio.length ? '' : '<p class="hint small">No hay un día tipo fuera del ciclo.</p>') +
+    (tiposList().some(function(t){ return normNombre(t.name) === 'cardio'; }) ? '' : '<div class="row2"><button type="button" class="btn" data-a="cc-cardio-crear">Crear día tipo Cardio (30 min en zona 2)</button></div>') +
+    '<div class="field"><span class="lbl">Días</span><div class="chips wrap" role="group">' + DSHORT.map(function(ds, i){ return '<button type="button" class="chip" data-a="cc-cardio-dia" data-i="' + i + '" aria-pressed="' + (c.cardio.dias.indexOf(i) >= 0) + '">' + ds + '</button>'; }).join('') + '</div></div></div>';
   var e = c.equipo;
   function campo(p, lbl, val, modo, ph){ return '<div class="field"><label for="eq-' + p + '">' + lbl + '</label><input id="eq-' + p + '" class="inp" data-f="equipo" data-p="' + p + '" value="' + esc(val) + '" inputmode="' + (modo || 'decimal') + '" placeholder="' + esc(ph || '') + '" autocomplete="off"></div>'; }
   b += '<div class="sechead"><h2>Equipo y progresión</h2></div><p class="hint small">Cuando en la última sesión llegas al tope del rango en todas las series, el día nuevo trae la siguiente carga que se puede armar con este equipo.</p>' +
@@ -2967,7 +3012,7 @@ function autoFill(ws){
   copyFromTipos(src, ws);
   showToast('Semana armada como la del ' + weekLabel(src) + ', con tus días tipo', function(){ clearWeekLocal(ws); });
 }
-function maybeAutoFill(){ if (!S.stack.length && S.tab === 'semana') autoFill(S.ws); }
+function maybeAutoFill(){ cardioInicial(); if (!S.stack.length && S.tab === 'semana') autoFill(S.ws); }
 /* vaciar una semana escribe vacío cada día que tenía contenido o documento y marca la semana en blanco (lunes) */
 function clearWeekLocal(ws){ var w = S.weeks[ws]; if (!w) return; for (var i = 0; i < 7; i++) w.days[i] = emptyDay(); w.blank = true; w._local = true; markWeekDays(ws); }
 function saveAsTipo(ctx, name){
@@ -3143,6 +3188,8 @@ document.addEventListener('click', function(e){
     case 'cc-mover': cicloEditar(function(c){ c.orden = window.Ciclo.mover(c.orden, +d.i, +d.dir); }); break;
     case 'cc-quitar': cicloEditar(function(c){ c.orden.splice(+d.i, 1); }); break;
     case 'cc-agregar': cicloEditar(function(c){ if (c.orden.indexOf(d.id) < 0) c.orden.push(d.id); }); break;
+    case 'cc-cardio-dia': cicloEditar(function(c){ var i = +d.i, arr = c.cardio.dias.slice(), q = arr.indexOf(i); if (q >= 0) arr.splice(q, 1); else arr.push(i); c.cardio.dias = arr.sort(function(a, b){ return a - b; }); c.cardio.configurado = true; }); break;
+    case 'cc-cardio-crear': { var cid = 't_' + uid(); S.tipos[cid] = { id: cid, name: CARDIO_TIPO.name, items: cloneItems(CARDIO_TIPO.items), ejemplo: false, _local: true }; markKey('t:' + cid); cicloEditar(function(c){ c.cardio.tipo = cid; c.cardio.configurado = true; }); showToast('Día tipo Cardio creado: 30 min en zona 2. Edítalo en Días tipo si quieres otro.'); break; }
     case 'cc-dia': cicloEditar(function(c){ var n = +d.n, i = +d.i, arr = c.dias[n].slice(), q = arr.indexOf(i); if (q >= 0) { if (arr.length > 1) arr.splice(q, 1); } else arr.push(i); arr.sort(function(a, b){ return a - b; }); c.dias[n] = arr; if (arr.length !== n) c.dias[n] = arr; }); break;
     case 'resp-crear': respaldoCrear(); break;
     case 'resp-restaurar-ok': respaldoRestaurar(); break;
@@ -3292,6 +3339,7 @@ document.addEventListener('change', function(e){
   }
   else if (f === 'photo') { uploadPhoto(el.files && el.files[0]); el.value = ''; }
   else if (f === 'resp-file') { respaldoElegir(el.files && el.files[0]); el.value = ''; }
+  else if (f === 'cardio') { cicloEditar(function(c){ c.cardio.tipo = el.value || null; c.cardio.configurado = true; }); }
   else if (f === 'corr') { S.corr = S.corr || { modo: 'barra', delta: (cicloCfg().correcciones || []).length ? '' : '-5' }; S.corr[el.dataset.p] = el.value; S.corr.resumen = null; S.corr.discos = false; if (S.confirm === 'corregir') { S.confirm = null; render(); } }
   else if (f === 'equipo') {
     var ep = el.dataset.p, ev = el.value;

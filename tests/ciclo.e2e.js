@@ -38,7 +38,8 @@ function ok(c, m){ console.log((c ? 'OK   ' : 'FALLO') + ' ' + m); if (!c) fallo
   await page.click('.bottomnav [data-t="semana"]'); await page.waitForTimeout(200);
   await page.click('[data-a="wk-next"]'); await page.waitForTimeout(600);
   // la semana siguiente se arma sola con el ciclo (mismos días que la anterior)
-  const autoNombres = await page.locator('.daycard:not(.muted) .nm').allInnerTexts();
+  // (los días de Cardio aparte no son sesiones de fuerza: se dejan fuera)
+  const autoNombres = (await page.locator('.daycard:not(.muted) .nm').allInnerTexts()).filter(n => n !== 'Cardio');
   ok(autoNombres.length >= 2 && autoNombres.every(n => /Pierna|Torso/.test(n)), 'la semana siguiente se armó sola con el ciclo: ' + autoNombres.join(', '));
   await page.screenshot({ path: path.join(SALIDA, 'c2a-auto.png'), fullPage: true });
   // dos semanas adelante no hay armado automático: ahí se prueba la opción manual
@@ -48,11 +49,11 @@ function ok(c, m){ console.log((c ? 'OK   ' : 'FALLO') + ' ' + m); if (!c) fallo
   ok(/Sigue en|Empieza en/.test(resumen), 'resumen de partida: ' + resumen);
   await page.click('[data-a="new-ciclo"]'); await page.waitForSelector('[data-a="ciclo-ok"]');
   await page.click('[data-a="ciclo-n"][data-n="3"]'); await page.waitForTimeout(150);
-  const prev = await page.locator('.daycard:not(.muted)').allInnerTexts();
+  const prev = (await page.locator('.daycard:not(.muted)').allInnerTexts()).filter(x => !/Cardio/.test(x));
   ok(prev.length === 3, 'con 3 días la vista previa muestra 3 sesiones: ' + prev.map(x => x.replace(/\n/g, ' ')).join(' | '));
   await page.screenshot({ path: path.join(SALIDA, 'c2-armar.png'), fullPage: true });
   await page.click('[data-a="ciclo-ok"]'); await page.waitForTimeout(800);
-  const nombres = await page.locator('.daycard:not(.muted) .nm').allInnerTexts();
+  const nombres = (await page.locator('.daycard:not(.muted) .nm').allInnerTexts()).filter(n => n !== 'Cardio');
   ok(nombres.length === 3 && nombres.every(n => /Pierna|Torso/.test(n)), 'la semana quedó armada: ' + nombres.join(', '));
   const dias = await page.evaluate(() => Object.keys(window.RutinasRuntime._pruebas.estado.cols.dias).length);
   await page.screenshot({ path: path.join(SALIDA, 'c3-semana-armada.png'), fullPage: true });

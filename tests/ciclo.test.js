@@ -117,4 +117,21 @@ prueba('normalizar lee descargaCada y factorDescarga con límites', () => {
   assert.strictEqual(C.normalizar({ factorDescarga: 2 }).factorDescarga, 0.6);
 });
 
+prueba('cardio aparte: los descansos de los días de cardio reciben el día tipo de cardio, menos los pasados', () => {
+  const plan = C.armar(['a', 'b', 'c', 'd'], 0, [0, 3, 4, 6]);
+  C.conCardio(plan, { tipo: 'cardio', dias: [2, 5] }, [2], []);
+  assert.strictEqual(plan.dias[2].accion, 'descanso', 'el miércoles ya pasó: se queda en descanso');
+  assert.deepStrictEqual(plan.dias[5], { i: 5, accion: 'tipo', tipo: 'cardio', cardio: true });
+  assert.strictEqual(plan.dias[1].accion, 'descanso', 'el martes no es día de cardio');
+  assert.strictEqual(plan.dias[0].accion, 'tipo', 'los días de fuerza no cambian');
+  const sin = C.armar(['a', 'b'], 0, [0, 3]); C.conCardio(sin, { tipo: null, dias: [2, 5] }); assert.strictEqual(sin.dias[2].accion, 'descanso', 'sin día tipo de cardio no pasa nada');
+  const re = C.reorganizar(['a', 'b'], 0, [{ i: 5, tipo: 'cardio', hecho: false, pasado: false, contenido: true }], [0, 3]);
+  assert.deepStrictEqual(re.reemplazados, [5], 'reorganizar marcaría el sábado como reemplazado');
+  C.conCardio(re, { tipo: 'cardio', dias: [5] }, [], [5]);
+  assert.deepStrictEqual(re.reemplazados, [], 'pero si ya tenía el cardio no se avisa como reemplazo');
+  const cfg = C.normalizar({ cardio: { tipo: 't1', dias: [5, 2, 9] } });
+  assert.deepStrictEqual(cfg.cardio, { tipo: 't1', dias: [2, 5], configurado: true });
+  assert.deepStrictEqual(C.normalizar({}).cardio, { tipo: null, dias: [2, 5], configurado: false }, 'por defecto miércoles y sábado, sin día tipo');
+});
+
 console.log(n + ' pruebas pasadas' + (process.exitCode ? ', con fallos' : ''));

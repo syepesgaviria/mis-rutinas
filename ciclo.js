@@ -22,6 +22,9 @@ function normalizar(doc){
   }
   var equipo = o.equipo && typeof o.equipo === 'object' ? JSON.parse(JSON.stringify(o.equipo)) : {};
   var extra = {}; ['bloque', 'correcciones'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
+  /* cardio aparte: un día tipo (solo cardio) que se carga en ciertos días de descanso al armar la semana */
+  var cd = o.cardio && typeof o.cardio === 'object' ? o.cardio : null;
+  extra.cardio = { tipo: cd && typeof cd.tipo === 'string' && cd.tipo ? cd.tipo : null, dias: cd && Array.isArray(cd.dias) ? diasValidos(cd.dias) : [2, 5], configurado: !!cd };
   var dc = parseInt(o.descargaCada, 10); extra.descargaCada = dc >= 2 && dc <= 20 ? dc : 6;
   var df = parseFloat(o.factorDescarga); extra.factorDescarga = df >= 0.3 && df <= 0.9 ? Math.round(df * 100) / 100 : 0.6;
   var out = { orden: orden, dias: dias, equipo: equipo };
@@ -40,6 +43,18 @@ function partida(orden, historial){
     if (p >= 0) return { idx: (p + 1) % orden.length, desde: { fecha: hechos[i].fecha, tipo: hechos[i].tipo } };
   }
   return { idx: 0, desde: null };
+}
+
+/* cardio aparte: los días de descanso del plan que caen en los días de cardio reciben el día tipo de cardio.
+   pasados: índices que no se tocan (días ya pasados). yaTenia: índices que ya tenían ese mismo día tipo */
+function conCardio(plan, cardio, pasados, yaTenia){
+  if (!cardio || !cardio.tipo || !cardio.dias.length) return plan;
+  plan.dias.forEach(function(x){
+    if (x.accion !== 'descanso' || cardio.dias.indexOf(x.i) < 0 || (pasados || []).indexOf(x.i) >= 0) return;
+    x.accion = 'tipo'; x.tipo = cardio.tipo; x.cardio = true;
+    if (plan.reemplazados && (yaTenia || []).indexOf(x.i) >= 0) plan.reemplazados = plan.reemplazados.filter(function(i){ return i !== x.i; });
+  });
+  return plan;
 }
 
 /* asignación de una semana vacía: N pasos del ciclo en los días elegidos (ordenados); el resto descansa */
@@ -102,5 +117,5 @@ function mover(orden, i, dir){
   var t = o[i]; o[i] = o[j]; o[j] = t; return o;
 }
 
-window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, diasValidos: diasValidos, rachaDescarga: rachaDescarga, descargaRecomendada: descargaRecomendada, seriesDescarga: seriesDescarga };
+window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, conCardio: conCardio, diasValidos: diasValidos, rachaDescarga: rachaDescarga, descargaRecomendada: descargaRecomendada, seriesDescarga: seriesDescarga };
 })();

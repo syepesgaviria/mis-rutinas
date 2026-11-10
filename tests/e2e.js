@@ -112,8 +112,8 @@ function ok(cond, msg){ console.log((cond ? 'OK   ' : 'FALLO') + ' ' + msg); if 
   // respaldo: el archivo generado contiene lo mismo que se cargó
   const resumen = await page.evaluate(async () => { const r = await window.RutinasRuntime.respaldo.crear(); const txt = await r.blob.text(); const d = JSON.parse(txt); return { nombre: r.nombre, cols: Object.fromEntries(Object.entries(d.colecciones).map(([k, v]) => [k, Object.keys(v).length])), fotos: Object.keys(d.fotos).length, bytes: txt.length }; });
   const orig = JSON.parse(fs.readFileSync(respaldo, 'utf8'));
-  // la app puede haber armado sola la semana en curso al abrir (hasta 7 días nuevos); todo lo demás debe coincidir exacto
-  const iguales = Object.keys(orig.colecciones).every(c => { const n = Object.keys(orig.colecciones[c]).length; return c === 'dias' ? resumen.cols[c] >= n && resumen.cols[c] <= n + 7 : n === resumen.cols[c]; });
+  // la app puede haber armado sola la semana en curso al abrir (hasta 7 días nuevos) y creado el día tipo Cardio con su ajuste en el ciclo; todo lo demás debe coincidir exacto
+  const iguales = Object.keys(orig.colecciones).every(c => { const n = Object.keys(orig.colecciones[c]).length; return c === 'dias' ? resumen.cols[c] >= n && resumen.cols[c] <= n + 7 : c === 'diasTipo' ? resumen.cols[c] >= n && resumen.cols[c] <= n + 1 : c === 'ciclo' ? resumen.cols[c] >= n : n === resumen.cols[c]; });
   ok(iguales && resumen.fotos === Object.keys(orig.fotos).length, 'el respaldo generado conserva todos los documentos y fotos (' + JSON.stringify(resumen.cols) + ', ' + resumen.fotos + ' fotos, ' + Math.round(resumen.bytes / 1024) + ' KB)');
 
   ok(errores.length === 0, 'sin errores de consola en todo el recorrido' + (errores.length ? ': ' + errores.join(' | ') : ''));
