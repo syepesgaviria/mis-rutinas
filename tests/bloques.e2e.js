@@ -24,6 +24,9 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
 
   // 1. día tipo sin bloques: ofrece el sugerido según el nombre
   await page.click('.bottomnav [data-t="tipos"]'); await page.locator('[data-a="open-tipo"]:has-text("Pierna B"), .tipocard:has-text("Pierna B")').first().click(); await page.waitForSelector('.bloque[data-sec="calent"]');
+  // el ajuste del plan del 10 nov ya deja los bloques puestos: se vacían para probar el camino desde cero
+  for (let i = 0; i < 40 && await page.locator('[data-a="bloque-del"]').count(); i++) { await page.locator('[data-a="bloque-del"]').first().click(); await page.waitForTimeout(60); }
+  await page.waitForTimeout(700);
   ok(await page.locator('.bloque[data-sec="calent"] [data-a="bloque-def"][data-q="pierna"]').count() === 1, 'en Pierna B el calentamiento sugerido es el de pierna');
   ok(await page.locator('.bloque[data-sec="estir"]').count() === 1, 'hay sección de estiramiento al final');
   await page.click('.bloque[data-sec="calent"] [data-a="bloque-def"][data-q="pierna"]'); await page.waitForTimeout(200);
@@ -63,7 +66,8 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
 
   // 4. un día tipo de torso sugiere el de torso; un día viejo sin bloques sigue abriendo igual
   await page.click('[data-a="back"]'); await page.click('.bottomnav [data-t="tipos"]'); await page.locator('[data-a="open-tipo"]:has-text("Torso A"), .tipocard:has-text("Torso A")').first().click(); await page.waitForSelector('.bloque[data-sec="calent"]');
-  ok(await page.locator('.bloque[data-sec="calent"] [data-a="bloque-def"][data-q="torso"]').count() === 1, 'en Torso A el sugerido es el de torso');
+  const tA = await page.evaluate(() => { const t = Object.values(window.RutinasRuntime._pruebas.estado.cols.diasTipo).find(t => t.name === 'Torso A'); return { c: (t.calent || []).map(x => x.n).join('|'), e: (t.estir || []).map(x => x.n).join('|') }; });
+  ok(/Círculos de brazos/.test(tA.c) && /Pectoral/.test(tA.e), 'Torso A quedó con el calentamiento y el estiramiento de torso: ' + tA.c.slice(0, 60));
   await page.click('[data-a="back"]'); await page.click('.bottomnav [data-t="semana"]'); await page.click('[data-a="wk-prev"]'); await page.waitForTimeout(400);
   await page.locator('.daycard:not(.muted)[data-a="open-dia"]:has-text("Hecho")').first().click(); await page.waitForTimeout(500);
   ok(errores.length === 0, 'un día hecho sin bloques abre sin errores');

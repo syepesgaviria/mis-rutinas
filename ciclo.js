@@ -21,7 +21,7 @@ function normalizar(doc){
     dias[n] = d && d.length === n ? d : DIAS_POR_DEFECTO[n].slice();
   }
   var equipo = o.equipo && typeof o.equipo === 'object' ? JSON.parse(JSON.stringify(o.equipo)) : {};
-  var extra = {}; ['bloque', 'correcciones'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
+  var extra = {}; ['bloque', 'correcciones', 'ajustes'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
   /* cardio aparte: un día tipo (solo cardio) que se carga en ciertos días de descanso al armar la semana */
   var cd = o.cardio && typeof o.cardio === 'object' ? o.cardio : null;
   extra.cardio = { tipo: cd && typeof cd.tipo === 'string' && cd.tipo ? cd.tipo : null, dias: cd && Array.isArray(cd.dias) ? diasValidos(cd.dias) : [2, 5], configurado: !!cd };

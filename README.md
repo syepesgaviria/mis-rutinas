@@ -23,7 +23,7 @@ Los datos viven solo en el teléfono. En Progreso, Datos y respaldo, "Guardar re
 - `img/`: fotos del catálogo (Free Exercise DB, dominio público), ilustraciones esquemáticas (búlgara y sentadilla en la pared) e imágenes generadas con IA. Cada ejercicio lleva miniatura cuadrada (`<id>.jpg`) y dos fotos en 3:2 (`<id>_0.jpg` inicio, `<id>_1.jpg` final).
 - `fonts/`: Archivo (SIL Open Font License), empaquetada para funcionar sin conexión.
 - `tools/`: `build-sw.js` (genera `sw.js`), `servir.js` (servidor local de pruebas), `semilla.js` (convierte una exportación de la base anterior en un archivo de respaldo).
-- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js`, `progresion.test.js` y `cronometro.test.js` (lógica pura), `catalogo.test.js` (coherencia del catálogo, sus alternativas y sus imágenes), `e2e.js`, `ciclo.e2e.js`, `progresion.e2e.js`, `descarga.e2e.js`, `cronometro.e2e.js`, `correccion.e2e.js` `bloques.e2e.js` y `cardio.e2e.js` (recorridos a tamaño iPhone con Playwright sobre un respaldo real), y `pared.e2e.js` (cambio a un ejercicio por tiempo, con un respaldo mínimo que arma la propia prueba).
+- `tests/`: `runtime.test.js` (capa de datos, con IndexedDB simulada), `ciclo.test.js`, `progresion.test.js` y `cronometro.test.js` (lógica pura), `catalogo.test.js` (coherencia del catálogo, sus alternativas y sus imágenes), `e2e.js`, `ciclo.e2e.js`, `progresion.e2e.js`, `descarga.e2e.js`, `cronometro.e2e.js`, `correccion.e2e.js` `bloques.e2e.js`, `cardio.e2e.js` y `plan1110.e2e.js` (recorridos a tamaño iPhone con Playwright sobre un respaldo real), y `pared.e2e.js` (cambio a un ejercicio por tiempo, con un respaldo mínimo que arma la propia prueba).
 
 ## Desarrollo
 
