@@ -325,7 +325,7 @@ function pendCount(){ return Object.keys(S.cola).length; }
    y prototype. Un campo conocido inválido sigue aislado por T01; editar un campo conocido no toca los desconocidos */
 var UNSAFE = dict(); ['__proto__', 'constructor', 'prototype'].forEach(function(k){ UNSAFE[k] = true; });
 function knownSet(list){ var s = dict(); list.forEach(function(k){ s[k] = true; }); return s; }
-var ITEM_KNOWN = knownSet(['k', 'ex', '_k0', '_x'].concat(FIELDS)), DAY_KNOWN = knownSet(['esquema', 'fecha', 'name', 'rest', 'tipo', 'items', 'blank', 'descarga', 'calent', 'estir', 'calentOk', 'estirOk', 'rev', 'base', 'lin', 'origen', 'updatedAt', '_x', '_origen']), TIPO_KNOWN = knownSet(['id', 'name', 'items', 'ejemplo', 'calent', 'estir', 'updatedAt', '_x', '_local']), CUSTOM_KNOWN = knownSet(['n', 't', 'g', 's', 'e', 'p', 'img', 'carga', 'deleted', 'createdAt', 'updatedAt', '_x', '_ro', '_local']);
+var ITEM_KNOWN = knownSet(['k', 'ex', '_k0', '_x'].concat(FIELDS)), DAY_KNOWN = knownSet(['esquema', 'fecha', 'name', 'rest', 'tipo', 'items', 'blank', 'descarga', 'calent', 'estir', 'calentOk', 'estirOk', 'cardioOk', 'rev', 'base', 'lin', 'origen', 'updatedAt', '_x', '_origen']), TIPO_KNOWN = knownSet(['id', 'name', 'items', 'ejemplo', 'calent', 'estir', 'updatedAt', '_x', '_local']), CUSTOM_KNOWN = knownSet(['n', 't', 'g', 's', 'e', 'p', 'img', 'carga', 'deleted', 'createdAt', 'updatedAt', '_x', '_ro', '_local']);
 function extrasOf(o, known){ var x = null; if (!isObj(o)) return null; Object.keys(o).forEach(function(k){ if (known[k] || UNSAFE[k] || o[k] === undefined) return; if (!x) x = dict(); x[k] = clone(o[k]); }); return x; }
 function putExtras(body, x){ if (x) Object.keys(x).forEach(function(k){ if (!UNSAFE[k] && !own(body, k)) body[k] = clone(x[k]); }); return body; }
 function serItems(items){ return items.map(function(it){ var o = { k: String(it._k0 != null ? it._k0 : it.k), ex: String(it.ex) }; FIELDS.forEach(function(f){ if (it[f] != null && it[f] !== '') o[f] = String(it[f]); }); return putExtras(o, it._x); }); }
@@ -343,7 +343,7 @@ function buildOp(key, now){
   if (kind === 'w') throw new Error('la semana ya no se guarda como un solo documento');
   /* día: esquema explícito. rev identifica esta escritura; base y lin (predecesor y cadena corta) se fijan al enviar,
      cuando se conoce la versión que el servicio tiene; origen se conserva si el día vino de una migración */
-  if (kind === 'd') { var dd = liveDay(id); if (!dd) throw new Error('día ausente'); var wsb = S.weeks[wsOf(id)]; var body = { esquema: 1, fecha: id, name: String(dd.name || ''), rest: !!dd.rest, tipo: dd.tipo || null, items: serItems(dd.items) }; if (wd(id) === 0 && wsb && wsb.blank) body.blank = true; if (dd.descarga === true) body.descarga = true; serBloques(body, dd, true); if (isObj(dd._origen)) body.origen = clone(dd._origen); body.updatedAt = now; return { op: 'set', body: putExtras(body, dd._x) }; }
+  if (kind === 'd') { var dd = liveDay(id); if (!dd) throw new Error('día ausente'); var wsb = S.weeks[wsOf(id)]; var body = { esquema: 1, fecha: id, name: String(dd.name || ''), rest: !!dd.rest, tipo: dd.tipo || null, items: serItems(dd.items) }; if (wd(id) === 0 && wsb && wsb.blank) body.blank = true; if (dd.descarga === true) body.descarga = true; serBloques(body, dd, true); if (typeof dd.cardioOk === 'boolean') body.cardioOk = dd.cardioOk; if (isObj(dd._origen)) body.origen = clone(dd._origen); body.updatedAt = now; return { op: 'set', body: putExtras(body, dd._x) }; }
   if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras(serBloques({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t, false), t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
@@ -645,7 +645,7 @@ function normWeek(o, id){
   return { start: id, blank: !!o.blank, days: [0,1,2,3,4,5,6].map(function(i){ var d = isObj(days[i]) ? days[i] : {}; return { name: String(d.name || ''), rest: !!d.rest, tipo: d.tipo ? String(d.tipo) : null, items: normItems(d.items) }; }) };
 }
 /* día independiente: el documento se lee como un día de la semana antigua; rev/base/lin/blank/origen van a dmeta */
-function normDay(o, id){ o = isObj(o) ? o : {}; var d = { name: String(o.name || ''), rest: !!o.rest, tipo: o.tipo ? String(o.tipo) : null, items: normItems(o.items) }; if (o.descarga === true) d.descarga = true; normBloques(d, o, true); var x = extrasOf(o, DAY_KNOWN); if (x) d._x = x; if (isObj(o.origen)) d._origen = clone(o.origen); return d; }
+function normDay(o, id){ o = isObj(o) ? o : {}; var d = { name: String(o.name || ''), rest: !!o.rest, tipo: o.tipo ? String(o.tipo) : null, items: normItems(o.items) }; if (o.descarga === true) d.descarga = true; normBloques(d, o, true); if (typeof o.cardioOk === 'boolean') d.cardioOk = o.cardioOk; var x = extrasOf(o, DAY_KNOWN); if (x) d._x = x; if (isObj(o.origen)) d._origen = clone(o.origen); return d; }
 function metaDia(o){ return { src: 'dia', rev: revOf(o), base: typeof o.base === 'string' ? o.base : null, lin: linOf(o), blank: o.blank === true, mig: isObj(o.origen) && typeof o.origen.migracion === 'string' ? o.origen.migracion : null }; }
 function normTipo(o, id){ o = isObj(o) ? o : {}; var t = { id: id, name: String(o.name || ''), items: normItems(o.items), ejemplo: !!o.ejemplo }; normBloques(t, o, false); var x = extrasOf(o, TIPO_KNOWN); if (x) t._x = x; return t; }
 /* CALENTAMIENTO Y ESTIRAMIENTO: listas cortas de { n: nombre, t: dosis } en el día tipo y en el día; el día lleva además
@@ -666,7 +666,8 @@ function normBloque(a){ if (!Array.isArray(a)) return []; return a.filter(isObj)
 function normBloques(d, o, esDia){ BLOQUES.forEach(function(s){ var l = normBloque(o[s]); if (l.length) d[s] = l; if (esDia && o[BLOQUE_OK[s]] === true) d[BLOQUE_OK[s]] = true; }); }
 function serBloques(body, d, esDia){ BLOQUES.forEach(function(s){ var l = normBloque(d[s]); if (l.length) body[s] = l; if (esDia && d[BLOQUE_OK[s]] === true) body[BLOQUE_OK[s]] = true; }); return body; }
 function bloqueProblems(o, why, esDia){ BLOQUES.forEach(function(s){ if (o[s] !== undefined && !Array.isArray(o[s])) why.push('el ' + BLOQUE_NOMBRE[s].toLowerCase() + ' no es una lista'); if (esDia && o[BLOQUE_OK[s]] !== undefined && typeof o[BLOQUE_OK[s]] !== 'boolean') why.push('la marca de ' + BLOQUE_NOMBRE[s].toLowerCase() + ' hecho no es sí o no'); }); }
-function copiarBloques(dst, src){ BLOQUES.forEach(function(s){ if (src && src[s] && src[s].length) dst[s] = clone(src[s]); else delete dst[s]; delete dst[BLOQUE_OK[s]]; }); return dst; }
+/* el contenido nuevo arranca sin marcas de hecho: ni las de los bloques ni la del cardio */
+function copiarBloques(dst, src){ BLOQUES.forEach(function(s){ if (src && src[s] && src[s].length) dst[s] = clone(src[s]); else delete dst[s]; delete dst[BLOQUE_OK[s]]; }); delete dst.cardioOk; return dst; }
 /* qué sugerencia ofrecer: pierna o torso según el nombre o los grupos musculares del contenido */
 function bloqueTipoSugerido(c){
   var n = norm(c.name || ''); if (/pierna|gluteo|glúteo|lower|leg/.test(n)) return 'pierna'; if (/torso|empuje|tiron|tirón|pecho|espalda|upper|push|pull/.test(n)) return 'torso';
@@ -710,6 +711,7 @@ function dayProblems(o, id){
   if (o.blank !== undefined && typeof o.blank !== 'boolean') why.push('la marca de semana en blanco no es sí o no');
   if (o.descarga !== undefined && typeof o.descarga !== 'boolean') why.push('la marca de descarga no es sí o no');
   bloqueProblems(o, why, true);
+  if (o.cardioOk !== undefined && typeof o.cardioOk !== 'boolean') why.push('la marca de cardio hecho no es sí o no');
   if (o.rev !== undefined && !(typeof o.rev === 'string' && o.rev)) why.push('la revisión no es texto');
   if (o.base !== undefined && o.base !== null && typeof o.base !== 'string') why.push('la revisión base no es texto');
   if (o.lin !== undefined && !Array.isArray(o.lin)) why.push('la cadena de revisiones no es una lista');
@@ -1306,15 +1308,20 @@ function renderToast(){ var o = document.querySelector('.toast'); if (o) o.remov
 function vBottomnav(){ return '<nav class="bottomnav" aria-label="Secciones"><div class="inner">' + TABS.map(function(t){ return '<button type="button" class="tabbtn" data-a="tab" data-t="' + t.id + '"' + (S.tab === t.id ? ' aria-current="page"' : '') + '>' + ic(t.icon, 22) + '<span>' + t.label + '</span></button>'; }).join('') + '</div></nav>'; }
 function vTopnav(){ return '<header class="topnav"><span class="brand">Mis rutinas</span><nav class="tabs" aria-label="Secciones">' + TABS.map(function(t){ return '<button type="button" data-a="tab" data-t="' + t.id + '"' + (S.tab === t.id ? ' aria-current="page"' : '') + '>' + t.label + '</button>'; }).join('') + '</nav><span class="savestate" data-live="save" aria-live="polite">' + saveText() + '</span></header>'; }
 function topbar(back, title){ return '<header class="topbar"><button type="button" class="back" data-a="back">' + ic('left', 20, 2) + '<span>' + esc(back) + '</span></button><h1 tabindex="-1" data-focus>' + esc(title) + '</h1><span></span></header>'; }
-/* lo hecho en la semana: días con algo anotado (los mismos que muestran "Hecho"), series con repeticiones anotadas,
-   volumen (kg × reps) y el cardio de esos días, porque el cardio no tiene registro propio */
+/* lo hecho en la semana: días de fuerza con series anotadas, series con repeticiones anotadas, volumen (kg × reps) y
+   los minutos del cardio que cuenta como hecho (cardioHecho). hecho[i]: el día muestra "Hecho"; cardio[i]: su cardio
+   cuenta como hecho */
 function doneStats(w){
   var by = {}; GROUPS.forEach(function(g){ by[g] = 0; });
-  var r = { by: by, sets: 0, vol: 0, min: 0, days: 0, hecho: {} };
+  var r = { by: by, sets: 0, vol: 0, min: 0, days: 0, hecho: {}, cardio: {} };
   w.days.forEach(function(d, i){
-    if (d.rest || !d.items.some(hasLog)) return;
-    r.days++; r.hecho[i] = true;
-    d.items.forEach(function(it){ var ex = exById(it.ex); if (ex.t === 'cardio') { r.min += num(it.min); return; } var n = logSets(it).length; r.sets += n; r.vol += itemVol(it); if (by[ex.g] != null) by[ex.g] += n; });
+    if (d.rest) return;
+    if (diaTerminado(d)) r.hecho[i] = true;
+    if (diaHecho(d)) {
+      r.days++;
+      d.items.forEach(function(it){ var ex = exById(it.ex); if (ex.t === 'cardio') return; var n = logSets(it).length; r.sets += n; r.vol += itemVol(it); if (by[ex.g] != null) by[ex.g] += n; });
+    }
+    if (cardioHecho(d)) { r.cardio[i] = true; d.items.forEach(function(it){ if (isCardio(it)) r.min += num(it.min); }); }
   });
   return r;
 }
@@ -1351,7 +1358,7 @@ function vDayCard(d, i){
   if (d.rest) return '<button type="button" class="daycard muted" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">Descanso</span>' + today + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
   if (!d.items.length) return '<button type="button" class="daycard muted" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(d.name || 'Sin plan') + '</span>' + today + '</span></span><span class="dcta">Planear</span></button>';
   var cardioOnly = !s.f && s.c;
-  return '<button type="button" class="daycard" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(dayName(d, s)) + '</span>' + (cardioOnly ? '<span class="pill">CARDIO</span>' : '') + (d.descarga ? '<span class="pill">Descarga</span>' : '') + (sugCount(d) && !d.items.some(hasLog) ? '<span class="pill accent">' + sugCount(d) + (sugCount(d) === 1 ? ' sube' : ' suben') + '</span>' : '') + (d.items.some(hasLog) ? '<span class="pill good">Hecho</span>' : '') + today + '</span><span class="dmeta">' + esc(dayMeta(d, s)) + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
+  return '<button type="button" class="daycard" data-a="open-dia" data-i="' + i + '">' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(dayName(d, s)) + '</span>' + (cardioOnly ? '<span class="pill">CARDIO</span>' : '') + (d.descarga ? '<span class="pill">Descarga</span>' : '') + (sugCount(d) && !d.items.some(hasLog) ? '<span class="pill accent">' + sugCount(d) + (sugCount(d) === 1 ? ' sube' : ' suben') + '</span>' : '') + (diaTerminado(d) ? '<span class="pill good">Hecho</span>' : '') + today + '</span><span class="dmeta">' + esc(dayMeta(d, s)) + '</span></span><span class="chev">' + ic('right', 18, 2) + '</span></button>';
 }
 function vCol(d, i){
   var date = dayDate(S.ws, i), s = dayStats(d), today = isToday(S.ws, i);
@@ -1368,7 +1375,7 @@ function vRow(d, i){
   var title = d.rest ? 'Descanso' : (d.items.length ? dayName(d, s) : (d.name || 'Sin plan'));
   var dv = dayVol(d), meta = [s.sets ? s.sets + ' series' : '', dv ? 'total ' + fmtVol(dv) + ' kg' : '', s.min ? fmtNum(s.min) + ' min cardio' : ''].filter(Boolean).join(' · ');
   var head = '<button type="button" class="rhead" data-a="open-dia" data-i="' + i + '"><small>' + DSHORT[i] + ' ' + date.getDate() + (today ? ' · <span class="today">HOY</span>' : '') + '</small><b>' + esc(title) + '</b>' +
-    (meta ? '<span class="rmeta">' + meta + '</span>' : '') + (d.items.some(hasLog) ? '<span class="pill good">Hecho</span>' : '') + '</button>';
+    (meta ? '<span class="rmeta">' + meta + '</span>' : '') + (diaTerminado(d) ? '<span class="pill good">Hecho</span>' : '') + '</button>';
   if (d.rest || !d.items.length) return '<div class="drow muted' + (today ? ' today' : '') + '">' + head + '<span class="rempty">' + (d.rest ? 'Día de descanso' : 'Todavía sin ejercicios') + '</span><button type="button" class="btn btn-sm" data-a="open-dia" data-i="' + i + '">' + (d.rest ? 'Editar día' : 'Planear día') + '</button></div>';
   var labs = groupLabels(d.items.filter(function(x){ return !isCardio(x); }));
   var items = ordered(d.items).map(function(it){
@@ -1420,11 +1427,11 @@ function barsHtml(dn, st, two){
 }
 function cardioHtml(dn, st){
   var rows = st.cardio.map(function(c){
-    var ok = !!dn.hecho[c.i];
+    var ok = !!dn.cardio[c.i];
     return '<div class="cardiorow' + (ok ? '' : ' pend') + '"><span class="cl"><span class="cn">' + esc(c.ex.n) + (ok ? '<span class="pill good">Hecho</span>' : '') + '</span><small>' + esc([DAYS[c.i], c.it.km ? c.it.km + ' km' : '', c.it.zona || ''].filter(Boolean).join(' · ')) + '</small></span><b>' + fmtNum(num(c.it.min)) + ' min</b></div>';
   }).join('');
   return '<div class="panelhead"><h2>Cardio</h2><b>' + fmtNum(dn.min) + ' de ' + fmtNum(st.min) + ' min</b></div>' +
-    (rows ? rows + '<p class="subnote">El cardio cuenta como hecho en los días con series anotadas.</p>' : '<p class="subnote">Sin cardio esta semana.</p>');
+    (rows ? rows + '<p class="subnote">El cardio se marca como hecho dentro del día. En los días con series anotadas cuenta solo, salvo que le quites la marca.</p>' : '<p class="subnote">Sin cardio esta semana.</p>');
 }
 function prevLine(){ var pw = S.weeks[shiftWeek(S.ws, -1)]; if (!pw || !hasContent(pw)) return ''; var pd = doneStats(pw); return '<p class="subnote">Semana anterior: ' + pd.sets + ' series hechas · ' + fmtVol(pd.vol) + ' kg · ' + fmtNum(pd.min) + ' min de cardio.</p>'; }
 function vDeskSummary(st, dn){
@@ -1580,7 +1587,8 @@ function vEditor(ctx){
   } else {
     b += vBloque(c, 'calent', ctx, isDay, logDate);
     if (f.length) b += '<div class="sechead"><h2>Fuerza</h2><span data-live="fmeta">' + fMeta(c) + '</span></div><div class="exlist" data-sec="fuerza">' + strengthBlocks(f, logDate, planDate, ctx) + '</div>';
-    if (cd.length) b += '<div class="sechead"><h2>Cardio</h2><span data-live="cmeta">' + cMeta(c) + '</span></div><div class="exlist" data-sec="cardio">' + cd.map(function(it){ return vExCard(it, { ctx: ctx }); }).join('') + '</div>';
+    /* hoy o antes, el cardio lleva su marca de hecho (no tiene series que anotar); en el plan, el resumen */
+    if (cd.length) b += '<div class="sechead"><h2>Cardio</h2>' + (logDate ? '<label class="okchk"><input type="checkbox" data-f="cardiook"' + (cardioHecho(c) ? ' checked' : '') + '>Hecho</label>' : '<span data-live="cmeta">' + cMeta(c) + '</span>') + '</div><div class="exlist" data-sec="cardio">' + cd.map(function(it){ return vExCard(it, { ctx: ctx }); }).join('') + '</div>';
     if (!c.items.length) b += '<p class="hint">Todavía no hay ejercicios. Agrégalos desde la biblioteca' + (isDay ? ' o carga un día tipo.' : '.') + '</p>';
     b += '<button type="button" class="addbtn" data-a="open-lib">' + ic('plus', 20, 2) + 'Agregar ejercicio</button>';
     b += vBloque(c, 'estir', ctx, isDay, logDate);
@@ -2123,6 +2131,12 @@ function cicloCfg(){
 function cicloEditar(fn){ var c = cicloCfg(); fn(c); S.cicloDocs.principal = c; markKey('k:principal'); render(); }
 function tipoNombre(id){ var t = S.tipos[id]; return t ? (t.name || 'Sin nombre') : 'Día tipo eliminado'; }
 function diaHecho(d){ return !!d && !d.rest && d.items.some(hasLog); }
+/* el cardio no tiene series: se marca hecho a mano en el día (cardioOk, 13 nov 2026). Sin marca cuenta como hecho en los
+   días con series anotadas, como siempre; false es la marca quitada a mano en uno de esos días */
+function cardioHecho(d){ return !!d && !d.rest && d.items.some(isCardio) && (d.cardioOk === true || (d.cardioOk !== false && d.items.some(hasLog))); }
+/* lo que se muestra como "Hecho" y no se toca al reorganizar: un día con series anotadas, o uno solo de cardio marcado
+   hecho. Las sesiones del ciclo y la racha de descarga siguen contando solo los días con fuerza (diaHecho) */
+function diaTerminado(d){ return diaHecho(d) || (!!d && !d.rest && d.items.length > 0 && d.items.every(isCardio) && cardioHecho(d)); }
 /* historial de días con su día tipo y si se hicieron, solo de semanas anteriores a la indicada */
 function cicloHistorial(antesDe){
   var out = [];
@@ -2137,7 +2151,7 @@ function cicloResumen(ws){
   return p.desde ? 'Sigue en ' + arranca + ' (último hecho: ' + tipoNombre(p.desde.tipo) + ', ' + fechaDiaCorta(p.desde.fecha) + ')' : 'Empieza en ' + arranca;
 }
 function fechaDiaCorta(f){ var d = parseIso(f); return DSHORT[wd(f)].toLowerCase() + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
-function cicloElegible(ws, i){ var d = S.weeks[ws] && S.weeks[ws].days[i]; return !(d && diaHecho(d)) && !(dayPast(ws, i) && !isToday(ws, i)); }
+function cicloElegible(ws, i){ var d = S.weeks[ws] && S.weeks[ws].days[i]; return !(d && diaTerminado(d)) &&!(dayPast(ws, i) && !isToday(ws, i)); }
 /* días para N sesiones: los por defecto; al reorganizar, N cuenta los ya hechos y solo se eligen días de hoy en adelante */
 function cicloDiasPara(ws, modo, n){
   var c = cicloCfg(), base = window.Ciclo.diasPara(c, n);
@@ -2191,7 +2205,7 @@ function cicloPlan(t){
   var c = cicloCfg(), p = cicloPartida(t.ws);
   if (t.modo !== 'reorg') return planConCardio(t.ws, window.Ciclo.armar(c.orden, p.idx, t.dias));
   var w = S.weeks[t.ws] || emptyWeek(t.ws);
-  var dias = w.days.map(function(d, i){ return { i: i, tipo: d.tipo || null, hecho: diaHecho(d), pasado: dayPast(t.ws, i) && !isToday(t.ws, i), contenido: hasDayContent(d) && !d.rest }; });
+  var dias = w.days.map(function(d, i){ return { i: i, tipo: d.tipo || null, hecho: diaTerminado(d), pasado: dayPast(t.ws, i) && !isToday(t.ws, i), contenido: hasDayContent(d) && !d.rest }; });
   return planConCardio(t.ws, window.Ciclo.reorganizar(c.orden, p.idx, dias, t.dias));
 }
 /* CARDIO APARTE. Santiago sacó el cardio de los días de pesas (9 nov 2026): va en un día tipo propio que se carga solo
@@ -2283,16 +2297,16 @@ function vCiclo(t){
   b += '<div class="seg s4" role="group" aria-label="Sesiones">' + [2, 3, 4, 5].map(function(n){ return '<button type="button" data-a="ciclo-n" data-n="' + n + '" aria-pressed="' + (nSel === n) + '">' + n + ' días</button>'; }).join('') + '</div>';
   b += '<p class="hint small">' + esc(p.desde ? 'El ciclo sigue en ' + tipoNombre(c.orden[p.idx]) + ': el último día hecho fue ' + tipoNombre(p.desde.tipo) + ' el ' + fechaDiaCorta(p.desde.fecha) + '.' : 'El ciclo empieza en ' + tipoNombre(c.orden[0]) + '.') + ' Toca un día para quitarlo o agregarlo.</p>';
   b += '<div class="daylist">' + plan.dias.map(function(x){
-    var i = x.i, d = S.weeks[t.ws] && S.weeks[t.ws].days[i], eleg = t.modo !== 'reorg' || cicloElegible(t.ws, i), hecho = d && diaHecho(d);
+    var i = x.i, d = S.weeks[t.ws] && S.weeks[t.ws].days[i], eleg = t.modo !== 'reorg' || cicloElegible(t.ws, i), hecho = d && diaTerminado(d);
     var sel = t.dias.indexOf(i) >= 0, numHtml = '<span class="dnum"><small>' + DSHORT[i] + '</small><b>' + dayDate(t.ws, i).getDate() + '</b></span>', txt, pill = '';
-    if (x.accion === 'mantener' && hecho) { txt = tipoNombre(x.tipo); pill = '<span class="pill good">Hecho</span>'; }
+    if (x.accion === 'mantener' && hecho) { txt = x.tipo && S.tipos[x.tipo] ? tipoNombre(x.tipo) : dayName(d, dayStats(d)); pill = '<span class="pill good">Hecho</span>'; }
     else if (x.accion === 'tipo' || x.accion === 'mantener') { txt = tipoNombre(x.tipo); if (plan.reemplazados && plan.reemplazados.indexOf(i) >= 0) pill = '<span class="pill">Reemplaza el plan</span>'; }
     else { txt = 'Descanso'; if (plan.reemplazados && plan.reemplazados.indexOf(i) >= 0) pill = '<span class="pill">Quita el plan</span>'; }
     return '<button type="button" class="daycard' + (x.accion === 'descanso' ? ' muted' : '') + '" data-a="ciclo-dia" data-i="' + i + '" aria-pressed="' + sel + '"' + (eleg ? '' : ' disabled') + '>' + numHtml + '<span class="dmain"><span class="dname"><span class="nm">' + esc(txt) + '</span>' + pill + '</span></span>' + (eleg ? '<span class="chev">' + ic(sel ? 'check' : 'plus', 18, 2) + '</span>' : '') + '</button>';
   }).join('') + '</div>';
   var fd = Math.round(c.factorDescarga * 100), di = descargaInfo(t.ws);
   b += '<label class="check" style="margin-top:4px;align-items:flex-start"><input type="checkbox" data-a="ciclo-descarga"' + (t.descarga ? ' checked' : '') + '><span><b>Semana de descarga</b><br><small class="hint">Mismas sesiones, series al ' + fd + '% y pesos sin subir. ' + (di.recomendar ? 'Toca: llevas ' + di.racha + ' semanas seguidas.' : 'Racha actual: ' + di.racha + ' de ' + c.descargaCada + ' semanas.') + '</small></span></label>';
-  var aviso = plan.reemplazados && plan.reemplazados.length ? '<p class="hint small">Se reemplaza el plan de ' + plan.reemplazados.map(function(i){ return DAYS[i].toLowerCase(); }).join(', ') + '. Los días con series anotadas no se tocan.</p>' : '';
+  var aviso = plan.reemplazados && plan.reemplazados.length ? '<p class="hint small">Se reemplaza el plan de ' + plan.reemplazados.map(function(i){ return DAYS[i].toLowerCase(); }).join(', ') + '. Los días hechos no se tocan.</p>' : '';
   var foot = '<div class="vfoot"><div class="footinfo"><b>' + nSel + (nSel === 1 ? ' sesión' : ' sesiones') + (hechos ? ' (' + hechos + (hechos === 1 ? ' hecha)' : ' hechas)') : '') + '</b><small>' + esc(c.orden.map(tipoNombre).join(' → ')) + '</small></div><button type="button" class="btn btn-primary" data-a="ciclo-ok"' + (t.dias.length ? '' : ' disabled') + '>' + (t.modo === 'reorg' ? 'Reorganizar' : 'Armar semana') + '</button></div>';
   return '<section class="view">' + topbar(t.from || 'Semana', viewTitle(t)) + '<div class="vbody">' + b + aviso + '</div>' + foot + '</section>';
 }
@@ -2303,7 +2317,7 @@ function aplicarPlanCiclo(ws, plan, modo, descarga){
   plan.dias.forEach(function(x){
     var ctx = { kind: 'day', ws: ws, i: x.i }, day = getCont(ctx); if (!day) return;
     /* en descarga, los días planeados sin hacer también se rearman para aplicarles la reducción */
-    if (x.accion === 'mantener' && !(descarga && x.tipo && !diaHecho(day))) return;
+    if (x.accion === 'mantener' && !(descarga && x.tipo && !diaTerminado(day))) return;
     if (x.accion === 'tipo' || x.accion === 'mantener') {
       loadTipo(ctx, x.tipo);
       if (descarga) { day.descarga = true; day.items.forEach(function(it){ if (isCardio(it)) return; var sg = window.Progresion.leerSug(it.sug); if (sg) it.kg = fmtKg(sg.de); delete it.sug; var n = setsN(it); if (n) it.sets = String(window.Ciclo.seriesDescarga(n, factor)); }); }
@@ -3376,6 +3390,7 @@ document.addEventListener('change', function(e){
     if (nit) settleField(el, nctx, nit, f === 'item' ? el.dataset.p : f + '|' + el.dataset.i);
   }
   if (f === 'bloqueok') { var okc = getCont(curCtx()); if (okc) { if (el.checked) okc[BLOQUE_OK[el.dataset.s]] = true; else delete okc[BLOQUE_OK[el.dataset.s]]; markDirty(curCtx()); var okb = el.closest('.sechead') && el.closest('.sechead').nextElementSibling; if (okb) okb.classList.toggle('ok', el.checked); } }
+  else if (f === 'cardiook') { var kctx = curCtx(), kc = getCont(kctx); if (kc) { if (el.checked) kc.cardioOk = true; else if (kc.items.some(hasLog)) kc.cardioOk = false; else delete kc.cardioOk; markDirty(kctx); } }
   else if (f === 'rest') { var ctx = curCtx(), c = getCont(ctx); if (c) { c.rest = el.checked; markDirty(ctx); render(); } }
   else if (f === 'item' && el.dataset.p === 'sets') {
     var sc = getCont(curCtx()), sit = sc && sc.items.find(function(x){ return x.k === el.dataset.k; });
