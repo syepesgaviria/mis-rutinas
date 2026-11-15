@@ -123,5 +123,26 @@ async function prueba(nombre, fn){ try { await fn(); pasadas++; console.log('OK 
     assert.strictEqual(rt.respaldo.info().cambios, false);
   });
 
+  await prueba('para la copia en GitHub: aviso por documento, instantánea sin fotos y meta local fuera del respaldo', async () => {
+    const vistos = [];
+    const quitar = rt.datos.alCambiar((col, id) => vistos.push(col + '/' + id));
+    await db.doc('pesos/2026-11-16').set({ fecha: '2026-11-16', kg: 72 });
+    await db.doc('pesos/2026-11-16').delete();
+    await db.doc('medidas/2026-11-16').set({ fecha: '2026-11-16', cintura: 88 });
+    quitar();
+    await db.doc('medidas/2026-11-17').set({ fecha: '2026-11-17', cintura: 88 });
+    assert.deepStrictEqual(vistos, ['pesos/2026-11-16', 'pesos/2026-11-16', 'medidas/2026-11-16'], 'avisa al guardar y al borrar, hasta que se quita el oyente');
+    const inst = rt.datos.instantanea();
+    assert.deepStrictEqual(Object.keys(inst).sort(), rt._pruebas.COLECCIONES.slice().sort());
+    inst.medidas['2026-11-16'].cintura = 1;
+    assert.strictEqual(rt.datos.instantanea().medidas['2026-11-16'].cintura, 88, 'la instantánea es una copia');
+    await rt.meta.set('copiaGithub', { repo: 'a/b', token: 'github_pat_secreta' });
+    assert.strictEqual(rt.meta.get('copiaGithub').token, 'github_pat_secreta');
+    const out = await rt.respaldo.crear(), texto = await out.blob.text();
+    assert.ok(texto.indexOf('github_pat_secreta') < 0 && texto.indexOf('copiaGithub') < 0, 'la llave nunca va en el respaldo');
+    await rt.meta.set('copiaGithub', null);
+    assert.strictEqual(rt.meta.get('copiaGithub'), null);
+  });
+
   console.log(pasadas + ' pruebas pasadas' + (process.exitCode ? ', con fallos' : ''));
 })().catch(e => { console.error(e); process.exit(2); });

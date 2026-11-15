@@ -602,3 +602,11 @@ main.shell:focus{outline:none}
 .brow .iconbtn{width:36px;height:36px}
 .bloque .linkbtn{align-self:flex-start;min-height:40px}
 .bloque .hint.small{margin:2px 0 0}
+/* copia automática en GitHub (Datos y respaldo) */
+.copia a{color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.copia .pasos{margin:10px 0 0;padding-left:20px;font-size:13px;line-height:1.5;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.copia .pasos a{display:inline}
+.copiaest{margin-top:10px;font-size:13px;line-height:1.45;color:var(--muted)}
+.copiaest.bien{color:var(--good)}
+.copiaest.mal{color:var(--danger)}
+.copia .row2{flex-wrap:wrap}

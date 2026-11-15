@@ -981,7 +981,7 @@ function initDb(){
   restoreCola();
   var rt = window.RutinasRuntime;
   if (!rt || typeof rt.abrir !== 'function') { S.assets = null; noDb(); return; }
-  rt.abrir().then(function(r){ S.assets = r.assets || null; startDb(r.db); if (top() && top().v === 'crear') render(); }, function(){ S.assets = null; noDb(); });
+  rt.abrir().then(function(r){ S.assets = r.assets || null; startDb(r.db); iniciarCopia(); if (top() && top().v === 'crear') render(); }, function(){ S.assets = null; noDb(); });
 }
 function fotoUrl(id){ var rt = window.RutinasRuntime; return rt && typeof rt.fotoUrl === 'function' ? rt.fotoUrl(id) : ''; }
 function normLegacy(o, id){ S.legacyRaw[id] = clone(o); return normWeek(o, id); }
@@ -2068,15 +2068,88 @@ function rtRespaldo(){ var rt = window.RutinasRuntime; return rt && rt.respaldo 
 function respInfo(){ var r = rtRespaldo(); try { return r ? r.info() : null; } catch (e) { return null; } }
 function fechaCorta(iso){ var d = !iso ? null : /^\d{4}-\d{2}-\d{2}$/.test(String(iso)) ? parseIso(iso) : new Date(iso); if (!d || isNaN(d.getTime())) return ''; return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
 function vAvisoRespaldo(){
-  var i = respInfo(); if (!i || !i.recomendar || S.dbState !== 'ok') return '';
+  var i = respInfo(); if (!i || !i.recomendar || S.dbState !== 'ok' || copiaSana()) return '';
   var t = i.ultimo ? 'Hay cambios desde el último respaldo (' + esc(fechaCorta(i.ultimo)) + ').' : 'Aún no has guardado ningún respaldo de tus datos.';
   return '<div class="banner pend" role="status"><span>' + t + ' Si borras la app, los datos se pierden.</span><span class="row2"><button type="button" class="btn btn-sm" data-a="open-datos">Guardar respaldo</button></span></div>';
 }
 function datosRow(){
   var i = respInfo(), txt = !i ? 'No disponible en este navegador' : i.ultimo ? 'Último respaldo: ' + fechaCorta(i.ultimo) + (i.cambios ? ' · hay cambios sin respaldar' : ' · al día') : 'Sin respaldo todavía';
-  return '<button type="button" class="profrow" data-a="open-datos"><span class="pt"><span class="eyebrow">Datos y respaldo</span><span>' + esc(txt) + '</span></span><span class="dcta">Abrir</span></button>';
+  return '<button type="button" class="profrow" data-a="open-datos"><span class="pt"><span class="eyebrow">Datos y respaldo</span><span>' + esc(txt) + '<span data-live="copia-fila">' + copiaFila() + '</span></span></span><span class="dcta">Abrir</span></button>';
 }
-function openDatos(){ S.dform = { insp: null, err: '', ocupado: false }; push({ v: 'datos', from: S.tab === 'semana' ? 'Semana' : 'Progreso' }); }
+function openDatos(){ S.dform = { insp: null, err: '', ocupado: false }; S.cform = { repo: COPIA_REPO, token: '', err: '', ocupado: false, cambiando: false }; push({ v: 'datos', from: S.tab === 'semana' ? 'Semana' : 'Progreso' }); }
+/* COPIA AUTOMÁTICA EN GITHUB (copia.js): la app sube sola una copia de los datos, sin fotos, a un repositorio privado;
+   de ahí la lee Claude para analizar los entrenamientos. La llave vive en el meta local, nunca en el respaldo. */
+var COPIA_REPO = 'syepesgaviria/mis-rutinas-datos';
+var COPIA_REINTENTA = { red: 1, limite: 1, conflicto: 1, github: 1 };
+function iniciarCopia(){
+  var rt = window.RutinasRuntime, C = window.Copia;
+  if (S.copia || !rt || !rt.datos || !rt.meta || !C) return;
+  try { S.copia = C.motor(rt, { alCambiar: copiaRefrescar, espera: (window.__pruebas && window.__pruebas.copiaEspera) || undefined }); S.copia.iniciar(); } catch (e) { S.copia = null; }
+}
+function copiaEst(){ try { return S.copia ? S.copia.estado() : null; } catch (e) { return null; } }
+/* el error cuenta si es posterior a la última copia buena */
+function copiaError(e){ return e && e.error && (!e.ok || Date.parse(e.error.cuando) >= Date.parse(e.ok)) ? e.error : null; }
+/* copia al día en los últimos 3 días y sin error: los datos están a salvo aunque no haya respaldo reciente */
+function copiaSana(){ var e = copiaEst(); return !!(e && e.activa && e.ok && !copiaError(e) && Date.now() - Date.parse(e.ok) < 3 * 86400000); }
+function copiaCuando(iso){
+  var d = new Date(iso); if (!iso || isNaN(d.getTime())) return '';
+  var hoy = new Date(), ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  var igual = function(a, b){ return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); };
+  var hm; try { hm = d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }); } catch (x) { hm = d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+  return (igual(d, hoy) ? 'hoy' : igual(d, ayer) ? 'ayer' : d.getDate() + ' ' + MONTHS[d.getMonth()]) + ' ' + hm;
+}
+function copiaFila(){ var e = copiaEst(); if (!e || !e.activa) return ''; return copiaError(e) ? ' · GitHub con error' : e.ok ? ' · GitHub al día' : ''; }
+function copiaEstadoHtml(){
+  var e = copiaEst(); if (!e || !e.activa) return '';
+  var er = copiaError(e);
+  if (e.corriendo) return '<p class="copiaest run">Subiendo la copia…</p>';
+  if (er) return '<p class="copiaest mal" role="alert">No se pudo subir la última copia (' + esc(copiaCuando(er.cuando)) + '): ' + esc(er.message) + '.' + (COPIA_REINTENTA[er.code] ? ' Se vuelve a intentar sola.' : '') + '</p>';
+  if (e.ok) return '<p class="copiaest bien">' + (e.pendiente ? 'Hay cambios por subir. Última copia: ' : 'Copia al día: ') + esc(copiaCuando(e.ok)) + (e.archivos ? ' · ' + e.archivos + ' archivos' : '') + '</p>';
+  return '<p class="copiaest">Esperando la primera copia.</p>';
+}
+/* tras cada cambio de estado del motor: solo las partes vivas, sin volver a pintar la pantalla (puede estar anotando) */
+function copiaRefrescar(){
+  var a = document.querySelector('[data-live="copia-estado"]'); if (a) a.innerHTML = copiaEstadoHtml();
+  var b = document.querySelector('[data-live="copia-fila"]'); if (b) b.textContent = copiaFila();
+  var e = copiaEst(), er = copiaError(e);
+  S.copiaAvisos = S.copiaAvisos || {};
+  if (!er) { S.copiaAvisos = {}; return; }
+  /* un error que no se arregla solo se avisa una vez, aunque la pantalla de datos no esté abierta */
+  if (!COPIA_REINTENTA[er.code] && !S.copiaAvisos[er.code] && !(top() && top().v === 'datos')) { S.copiaAvisos[er.code] = 1; showToast('La copia en GitHub no se pudo subir: ' + er.message + '. Revísala en Progreso, Datos y respaldo.'); }
+}
+function copiaLinkRepo(repo){ var p = String(repo || COPIA_REPO).split('/'); return 'https://github.com/new?name=' + encodeURIComponent(p[1] || 'mis-rutinas-datos') + '&owner=' + encodeURIComponent(p[0] || '') + '&visibility=private&description=' + encodeURIComponent('Copia automática de los datos de Mis rutinas'); }
+function copiaLinkLlave(repo){ var p = String(repo || COPIA_REPO).split('/'); return 'https://github.com/settings/personal-access-tokens/new?name=' + encodeURIComponent('Mis rutinas copia') + '&description=' + encodeURIComponent('La app Mis rutinas sube tus datos a ' + (p[1] || 'mis-rutinas-datos')) + '&target_name=' + encodeURIComponent(p[0] || '') + '&expires_in=none&contents=write'; }
+function vCopia(){
+  var e = copiaEst(); if (!e) return '';
+  var f = S.cform || (S.cform = { repo: COPIA_REPO, token: '', err: '', ocupado: false, cambiando: false });
+  var b = '<div class="card copia"><p><b>Copia automática en GitHub</b></p>';
+  if (e.activa && !f.cambiando) {
+    b += '<p class="hint small" style="margin-top:4px">Cada vez que guardas algo, la app sube una copia de tus datos (sin fotos) a tu repositorio privado <a href="https://github.com/' + esc(e.repo) + '" target="_blank" rel="noopener">' + esc(e.repo) + '</a>. De ahí los lee Claude para analizar tus entrenamientos.</p>';
+    b += '<div data-live="copia-estado">' + copiaEstadoHtml() + '</div>';
+    b += '<div class="row2" style="margin-top:10px"><button type="button" class="btn btn-sm" data-a="copia-subir">Subir ahora</button><button type="button" class="btn btn-sm" data-a="copia-cambiar">Cambiar llave</button><button type="button" class="btn btn-sm" data-a="copia-quitar">Desconectar</button></div>';
+    b += '<p class="hint small" style="margin-top:8px">Llave terminada en …' + esc(e.llave) + (e.desde ? ', conectada el ' + esc(fechaCorta(e.desde)) : '') + '. Se guarda solo en este teléfono y no va en el respaldo.</p>';
+    if (S.confirm === 'copia-quitar') b += '<div class="confirm" style="margin-top:12px"><p>Se borra la llave de este teléfono y la app deja de subir copias. Lo que ya está en GitHub se queda ahí.</p><div class="row2"><button type="button" class="btn btn-danger-solid" data-a="copia-quitar-ok">Desconectar</button><button type="button" class="btn" data-a="copia-cancel">Cancelar</button></div></div>';
+    return b + '</div>';
+  }
+  b += '<p class="hint small" style="margin-top:4px">' + (f.cambiando ? 'Pega la llave nueva. Si la anterior venció o la borraste, créala otra vez con el enlace del paso 2.' : 'La app sube sola una copia de tus datos (sin fotos) a un repositorio privado de tu GitHub cada vez que guardas algo. Así Claude los lee directamente para analizar tus entrenamientos, sin que le mandes el respaldo.') + '</p>';
+  b += '<ol class="pasos"><li><a href="' + esc(copiaLinkRepo(f.repo)) + '" target="_blank" rel="noopener">Crea el repositorio privado</a>, si todavía no lo tienes.</li><li><a href="' + esc(copiaLinkLlave(f.repo)) + '" target="_blank" rel="noopener">Crea la llave</a>. En «Repository access» elige «Only select repositories», marca el repositorio y toca «Generate token». Copia la llave.</li><li>Pégala aquí y toca ' + (f.cambiando ? 'Guardar llave' : 'Conectar') + '.</li></ol>';
+  b += '<div class="field" style="margin-top:12px"><label for="c-repo">Repositorio</label><input id="c-repo" class="inp" data-f="copia" data-p="repo" value="' + esc(f.repo) + '" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"' + (f.cambiando ? ' readonly' : '') + '></div>';
+  b += '<div class="field" style="margin-top:10px"><label for="c-llave">Llave</label><input id="c-llave" class="inp" data-f="copia" data-p="token" value="' + esc(f.token) + '" placeholder="github_pat_…" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></div>';
+  if (f.err) b += '<p class="err" role="alert" style="margin-top:8px">' + esc(f.err) + '</p>';
+  b += '<div class="row2" style="margin-top:12px"><button type="button" class="btn btn-primary" data-a="copia-conectar"' + (f.ocupado ? ' disabled' : '') + '>' + (f.ocupado ? 'Conectando…' : f.cambiando ? 'Guardar llave' : 'Conectar') + '</button>' + (f.cambiando ? '<button type="button" class="btn" data-a="copia-cancel">Cancelar</button>' : '') + '</div>';
+  if (!f.cambiando) b += '<p class="hint small" style="margin-top:8px">La llave se guarda solo en este teléfono y no va en el archivo de respaldo.</p>';
+  return b + '</div>';
+}
+function copiaConectar(){
+  var f = S.cform; if (!S.copia || !f || f.ocupado) return;
+  f.ocupado = true; f.err = ''; render();
+  S.copia.conectar(f.repo, f.token).then(function(r){
+    S.cform = { repo: COPIA_REPO, token: '', err: '', ocupado: false, cambiando: false };
+    showToast(r && r.cambios ? 'Conectado. Primera copia subida: ' + r.archivos + ' archivos.' : 'Conectado. La copia está al día.');
+  }, function(x){
+    f.ocupado = false; f.err = cap(x && x.message ? x.message : 'no se pudo conectar') + '.';
+  }).then(function(){ if (top() && top().v === 'datos') render(); });
+}
 function respaldoCrear(){
   var r = rtRespaldo(), f = S.dform; if (!r || !f || f.ocupado) return;
   f.ocupado = true; f.err = ''; render();
@@ -2102,11 +2175,12 @@ function resumenDatos(n){
   return partes.join(' · ');
 }
 function vDatos(t){
-  var f = S.dform || {}, i = respInfo(), r = rtRespaldo(), b = pendSlot();
-  b += '<p class="hint small">Tus datos viven solo en este teléfono. No hay cuenta ni nube: si borras la app o cambias de teléfono, lo único que los recupera es un archivo de respaldo guardado en Archivos o iCloud.</p>';
+  var f = S.dform || {}, i = respInfo(), r = rtRespaldo(), b = pendSlot(), ce = copiaEst();
+  b += '<p class="hint small">' + (ce && ce.activa ? 'Tus datos viven en este teléfono y además se copian solos a tu repositorio privado de GitHub. Las fotos solo van en el archivo de respaldo, que es lo que restaura la app en un teléfono nuevo.' : 'Tus datos viven solo en este teléfono. No hay cuenta ni nube: si borras la app o cambias de teléfono, lo único que los recupera es un archivo de respaldo guardado en Archivos o iCloud.') + '</p>';
   if (!r || !i) b += '<div class="card"><p>El almacenamiento local no está disponible en este navegador.</p></div>';
   else {
     b += '<div class="metacard"><span class="eyebrow">Guardado en este dispositivo</span><span style="font-size:14px;line-height:1.4">' + esc(resumenDatos(i.conteo)) + '</span><small>' + (i.ultimo ? 'Último respaldo: ' + esc(fechaCorta(i.ultimo)) + (i.cambios ? '. Hay cambios desde entonces.' : '. Sin cambios desde entonces.') : 'Todavía no has guardado un respaldo.') + '</small></div>';
+    b += vCopia();
     b += '<div class="card"><p><b>Guardar respaldo</b></p><p class="hint small" style="margin-top:4px">Crea un archivo con todo (semanas, días tipo, ejercicios, pesos, medidas, perfil y fotos) y abre la hoja de compartir para guardarlo en Archivos o iCloud. Hazlo cada dos semanas o después de cambios importantes.</p><div class="row2" style="margin-top:10px"><button type="button" class="btn btn-primary" data-a="resp-crear"' + (f.ocupado ? ' disabled' : '') + '>' + (f.ocupado ? 'Preparando…' : 'Guardar respaldo') + '</button></div></div>';
     b += '<div class="card"><p><b>Restaurar desde un archivo</b></p><p class="hint small" style="margin-top:4px">Reemplaza todo lo guardado en este dispositivo por el contenido de un respaldo. Úsalo en un teléfono nuevo o para volver a un estado anterior.</p><div class="row2" style="margin-top:10px"><label class="btn" style="cursor:pointer">Elegir archivo<input type="file" accept="application/json,.json" data-f="resp-file" class="sr"' + (f.ocupado ? ' disabled' : '') + '></label></div>' +
       (f.err ? '<p class="err" role="alert" style="margin-top:8px">' + esc(f.err) + '</p>' : '') +
@@ -3298,6 +3372,12 @@ document.addEventListener('click', function(e){
     case 'resp-crear': respaldoCrear(); break;
     case 'resp-restaurar-ok': respaldoRestaurar(); break;
     case 'resp-cancel': S.confirm = null; if (S.dform) { S.dform.insp = null; S.dform.err = ''; } render(); break;
+    case 'copia-conectar': copiaConectar(); break;
+    case 'copia-subir': if (S.copia) S.copia.subirAhora().catch(function(){}); break;
+    case 'copia-cambiar': S.cform = { repo: (copiaEst() || {}).repo || COPIA_REPO, token: '', err: '', ocupado: false, cambiando: true }; S.confirm = null; render(); var cl = document.getElementById('c-llave'); if (cl) cl.focus(); break;
+    case 'copia-cancel': S.confirm = null; if (S.cform) { S.cform.cambiando = false; S.cform.err = ''; S.cform.token = ''; } render(); break;
+    case 'copia-quitar': S.confirm = 'copia-quitar'; render(); break;
+    case 'copia-quitar-ok': S.confirm = null; if (S.copia) S.copia.desconectar().then(function(){ S.cform = { repo: COPIA_REPO, token: '', err: '', ocupado: false, cambiando: false }; showToast('Copia en GitHub desconectada. La llave se borró de este teléfono.'); if (top() && top().v === 'datos') render(); }); break;
     case 'perfil-sexo': if (S.fform) { S.fform.sexo = d.s === 'M' ? 'M' : 'H'; render(); } break;
     case 'perfil-save': savePerfil(); break;
     case 'sug-undo': var sc = getCont(ctx), si = sc && sc.items.find(function(x){ return x.k === d.k; }), sg = si && window.Progresion.leerSug(si.sug); if (sg) { si.kg = fmtKg(sg.de); delete si.sug; clearDrafts(ctx, si.k, 'kg'); markDirty(ctx); render(); } break;
@@ -3418,6 +3498,7 @@ document.addEventListener('input', function(e){
     markDirty(hctx); updateLog(hit); updateLive();
   }
   else if (f === 'pkg') { if (S.pform) S.pform.kg = el.value; }
+  else if (f === 'copia') { if (S.cform) { S.cform[el.dataset.p] = el.value; if (S.cform.err) { S.cform.err = ''; var ce = el.closest('.card') && el.closest('.card').querySelector('.err'); if (ce) ce.remove(); } } }
   else if (f === 'mval') { if (S.mform) { S.mform[el.dataset.p] = el.value; var pv = document.querySelector('[data-live="mprev"]'); if (pv) pv.innerHTML = mPreview(); } }
   else if (f === 'fval') { if (S.fform) { S.fform[el.dataset.p] = el.value; updPerfilLive(); } }
 });

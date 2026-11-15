@@ -66,6 +66,9 @@ function cargar(){
 }
 function guardarMeta(k, v){ st.meta[k] = v; return tx(['meta'], 'readwrite', function(t){ t.objectStore('meta').put({ k: k, v: v }); }).catch(function(){}); }
 function marcarCambio(){ if (st.meta.cambiosDesdeRespaldo !== true) guardarMeta('cambiosDesdeRespaldo', true); }
+/* quien quiera enterarse de cada documento guardado o borrado (la copia automática en GitHub) */
+var oyentes = [];
+function avisarCambio(col, id){ oyentes.slice().forEach(function(f){ try { f(col, id); } catch (e) { setTimeout(function(){ throw e; }, 0); } }); }
 
 /* instantáneas y suscripciones */
 function docSnap(id, data){ return { id: id, exists: data !== undefined, data: function(){ return clone(data); }, metadata: { fromCache: false, hasPendingWrites: false } }; }
@@ -112,11 +115,11 @@ function docRef(path){
     set: function(v){
       if (v === undefined || v === null || typeof v !== 'object' || Array.isArray(v)) return Promise.reject(err('invalid_argument', 'el documento debe ser un objeto'));
       var data = clone(v);
-      return tx(['docs'], 'readwrite', function(t){ t.objectStore('docs').put({ col: col, id: id, data: data }); }).then(function(){ st.cols[col][id] = data; marcarCambio(); emitir(col); });
+      return tx(['docs'], 'readwrite', function(t){ t.objectStore('docs').put({ col: col, id: id, data: data }); }).then(function(){ st.cols[col][id] = data; marcarCambio(); emitir(col); avisarCambio(col, id); });
     },
     get: function(){ var o = st.cols[col]; return Promise.resolve(docSnap(id, own(o, id) ? o[id] : undefined)); },
     delete: function(){
-      return tx(['docs'], 'readwrite', function(t){ t.objectStore('docs').delete([col, id]); }).then(function(){ delete st.cols[col][id]; marcarCambio(); emitir(col); });
+      return tx(['docs'], 'readwrite', function(t){ t.objectStore('docs').delete([col, id]); }).then(function(){ delete st.cols[col][id]; marcarCambio(); emitir(col); avisarCambio(col, id); });
     },
     /* arriendo exclusivo: en un solo dispositivo basta con recordar quién lo tiene y hasta cuándo */
     acquire: function(opts){
@@ -264,6 +267,13 @@ window.RutinasRuntime = {
   abrir: abrir,
   fotoUrl: fotoUrl,
   respaldo: { crear: crearRespaldo, entregar: entregar, hecho: respaldoHecho, inspeccionar: inspeccionarRespaldo, restaurar: function(insp){ return restaurar(insp._v); }, info: infoRespaldo },
+  /* para la copia automática: copia de todas las colecciones (sin fotos) y aviso tras cada documento guardado */
+  datos: {
+    instantanea: function(){ var o = {}; COLECCIONES.forEach(function(c){ o[c] = clone(st.cols[c]); }); return o; },
+    alCambiar: function(f){ oyentes.push(f); return function(){ var i = oyentes.indexOf(f); if (i >= 0) oyentes.splice(i, 1); }; }
+  },
+  /* ajustes que viven solo en este dispositivo (no van en el respaldo), como la llave de la copia en GitHub */
+  meta: { get: function(k){ return clone(st.meta[k]); }, set: function(k, v){ return guardarMeta(k, v); } },
   _pruebas: { borrarTodo: borrarTodo, estado: st, validar: validarRespaldo, COLECCIONES: COLECCIONES }
 };
 })();
