@@ -110,6 +110,35 @@ function descargaRecomendada(semanas, cada, minSesiones){ var r = rachaDescarga(
 /* series de descarga: factor sobre las planeadas, redondeando hacia abajo, nunca menos de 2 (o de 1 si solo había 1) */
 function seriesDescarga(sets, factor){ var n = +sets || 0; if (n <= 0) return n; return Math.max(Math.min(2, n), Math.floor(n * (factor || 0.6))); }
 
+/* GRUPOS. Saca un ejercicio de cada grupo indicado y arma con ellos un grupo nuevo al final de la fuerza, con los
+   descansos indicados (Torso B, 15 nov 2026: las triseries A y B se volvieron superseries y el tercero de cada una pasó
+   a la superserie D). items: ítems del día en su orden, con g (letra) y rest. op: { sacar: [[letra, posición desde 1],
+   ...], tamano: cuántos ejercicios debe tener cada grupo de origen, nueva: letra del grupo nuevo, descansos: { letra:
+   descanso }, esCardio: función }. El cardio no se mueve ni cuenta. Devuelve una lista nueva (la de entrada no cambia)
+   o null si la forma no es la esperada: un grupo que falta, partido en dos o de otro tamaño, o la letra nueva ya en uso.
+   No adivina: en ese caso el día se queda como está */
+function grupoNuevoAlFinal(items, op){
+  var esCardio = op.esCardio || function(){ return false; };
+  var copia = (items || []).map(function(x){ var o = {}; Object.keys(x).forEach(function(k){ o[k] = x[k]; }); return o; });
+  var fuerza = copia.filter(function(x){ return !esCardio(x); });
+  if (!op.nueva || fuerza.some(function(x){ return x.g === op.nueva; })) return null;
+  var tramos = {}, ant = null;
+  fuerza.forEach(function(x){ var g = x.g || ''; if (g && g !== ant) tramos[g] = (tramos[g] || 0) + 1; ant = g; });
+  var sacados = [];
+  for (var s = 0; s < (op.sacar || []).length; s++) {
+    var letra = op.sacar[s][0], pos = op.sacar[s][1];
+    var grupo = fuerza.filter(function(x){ return x.g === letra; });
+    if (tramos[letra] !== 1 || (op.tamano && grupo.length !== op.tamano) || !grupo[pos - 1] || sacados.indexOf(grupo[pos - 1]) >= 0) return null;
+    sacados.push(grupo[pos - 1]);
+  }
+  if (!sacados.length) return null;
+  var orden = fuerza.filter(function(x){ return sacados.indexOf(x) < 0; }).concat(sacados);
+  sacados.forEach(function(x){ x.g = op.nueva; });
+  var desc = op.descansos || {};
+  orden.forEach(function(x){ if (x.g && Object.prototype.hasOwnProperty.call(desc, x.g)) x.rest = desc[x.g]; });
+  return copia.map(function(x){ return esCardio(x) ? x : orden.shift(); });
+}
+
 /* mover un elemento del orden: dir -1 sube, +1 baja */
 function mover(orden, i, dir){
   var o = orden.slice(), j = i + dir;
@@ -117,5 +146,5 @@ function mover(orden, i, dir){
   var t = o[i]; o[i] = o[j]; o[j] = t; return o;
 }
 
-window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, conCardio: conCardio, diasValidos: diasValidos, rachaDescarga: rachaDescarga, descargaRecomendada: descargaRecomendada, seriesDescarga: seriesDescarga };
+window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, conCardio: conCardio, diasValidos: diasValidos, rachaDescarga: rachaDescarga, descargaRecomendada: descargaRecomendada, seriesDescarga: seriesDescarga, grupoNuevoAlFinal: grupoNuevoAlFinal };
 })();

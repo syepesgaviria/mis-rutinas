@@ -134,4 +134,46 @@ prueba('cardio aparte: los descansos de los días de cardio reciben el día tipo
   assert.deepStrictEqual(C.normalizar({}).cardio, { tipo: null, dias: [2, 5], configurado: false }, 'por defecto miércoles y sábado, sin día tipo');
 });
 
+/* Torso B del 15 nov 2026: A y B eran triseries; el tercero de cada una pasa a una superserie D al final */
+const TB = () => [
+  { k: '1', ex: 'inclinado', g: 'A', rest: '0:30', kg: '35', sets: '3' },
+  { k: '2', ex: 'laterales', g: 'A', rest: '0:30', kg: '15' },
+  { k: '3', ex: 'jaloncuerda', g: 'A', rest: '0:30', kg: '40', sug: '38>40', note: 'Sentado en el piso' },
+  { k: '4', ex: 'fondos', g: 'B', rest: '1:00' },
+  { k: '5', ex: 'remomanc', g: 'B', rest: '1:00', kg: '20' },
+  { k: '6', ex: 'rueda', g: 'B', rest: '1:00' },
+  { k: '7', ex: 'facepull', g: 'C', rest: '0:30' },
+  { k: '8', ex: 'martillo', g: 'C', rest: '0:30' }
+];
+const OP_TB = { sacar: [['A', 3], ['B', 3]], tamano: 3, nueva: 'D', descansos: { A: '1:30', D: '1:30' }, esCardio: x => x.ex === 'correr' };
+
+prueba('grupo nuevo al final: las triseries A y B pasan a superseries y su tercero forma la D', () => {
+  const antes = TB(), copia = JSON.parse(JSON.stringify(antes));
+  const r = C.grupoNuevoAlFinal(antes, OP_TB);
+  assert.deepStrictEqual(r.map(x => x.ex + ':' + x.g), ['inclinado:A', 'laterales:A', 'fondos:B', 'remomanc:B', 'facepull:C', 'martillo:C', 'jaloncuerda:D', 'rueda:D']);
+  assert.deepStrictEqual(r.map(x => x.rest), ['1:30', '1:30', '1:00', '1:00', '0:30', '0:30', '1:30', '1:30'], 'A y D en 1:30; B y C como estaban');
+  const j = r.find(x => x.ex === 'jaloncuerda');
+  assert.deepStrictEqual([j.k, j.kg, j.sug, j.note], ['3', '40', '38>40', 'Sentado en el piso'], 'el ejercicio movido conserva su peso, su propuesta y su nota');
+  assert.deepStrictEqual(antes, copia, 'la lista de entrada no cambia');
+});
+
+prueba('grupo nuevo al final: el cardio se queda donde estaba y no cuenta', () => {
+  const items = TB(); items.splice(3, 0, { k: 'c', ex: 'correr', min: '20' });
+  const r = C.grupoNuevoAlFinal(items, OP_TB);
+  assert.strictEqual(r[3].ex, 'correr', 'el cardio sigue en su lugar');
+  assert.deepStrictEqual(r.filter(x => x.ex !== 'correr').map(x => x.g).join(''), 'AABBCCDD');
+});
+
+prueba('grupo nuevo al final: si la forma no es la esperada no adivina y devuelve null', () => {
+  const ya = C.grupoNuevoAlFinal(TB(), OP_TB);
+  assert.strictEqual(C.grupoNuevoAlFinal(ya, OP_TB), null, 'aplicarlo dos veces no hace nada (ya existe la D)');
+  const dos = TB().filter(x => x.ex !== 'jaloncuerda');
+  assert.strictEqual(C.grupoNuevoAlFinal(dos, OP_TB), null, 'A con dos ejercicios');
+  const partido = TB(); partido[1].g = '';
+  assert.strictEqual(C.grupoNuevoAlFinal(partido, OP_TB), null, 'A partido en dos tramos');
+  const sinB = TB().map(x => (x.g === 'B' ? Object.assign({}, x, { g: '' }) : x));
+  assert.strictEqual(C.grupoNuevoAlFinal(sinB, OP_TB), null, 'sin grupo B');
+  assert.strictEqual(C.grupoNuevoAlFinal([], OP_TB), null, 'día vacío');
+});
+
 console.log(n + ' pruebas pasadas' + (process.exitCode ? ', con fallos' : ''));

@@ -1009,7 +1009,7 @@ function subscribeCol(db, kind){
       if (kind === 'w') { Object.keys(S.legacyRaw).forEach(function(ws){ if (!S.legacy[ws]) delete S.legacyRaw[ws]; }); if (definitive(snap)) S.defin.w = true; rebuildWeeks(); if (S.defin.w) maybeAutoFill(); }
       if (kind === 'g') onMig(db);
     }
-    S.loaded[kind] = true; checkLoaded(); cardioInicial(); planInicial(); kickQueue(); requestRender();
+    S.loaded[kind] = true; checkLoaded(); cardioInicial(); planInicial(); torsoBInicial(); kickQueue(); requestRender();
   }, function(e){ snapErr(col, e); });
 }
 /* el estado de migración decide el modo: mientras no esté completa, las semanas antiguas se leen como fuente de solo
@@ -2275,6 +2275,44 @@ function planInicial(){
   showToast('Plan del 10 nov aplicado en ' + nTipos + ' días tipo' + (nDias ? ' y ' + nDias + (nDias === 1 ? ' día' : ' días') + ' de estas semanas' : '') + ': sin cardio en pesas, rumano con mancuernas en Pierna A, pared y curl deslizante en Pierna B, calentamiento y estiramiento.');
   requestRender();
 }
+/* AJUSTE DE TORSO B DEL 15 NOV 2026 (una sola vez, pedido por Santiago): las triseries A y B le resultaban muy pesadas.
+   Pasan a superseries y el tercer ejercicio de cada una (jalón con cuerda y rueda abdominal) forma la superserie D, al
+   final. Descansos con la regla de descansos (recuperación objetivo menos el tiempo de los otros ejercicios del grupo):
+   A y D quedan en 1:30, así el press inclinado y el jalón conservan los 2:30 de recuperación que tenían; B y C quedan
+   como estaban. Se aplica al día tipo y a los días de esta semana y la siguiente que todavía no se han hecho; si Torso B
+   ya no tiene esa forma (por ejemplo, lo cambió a mano), no se toca */
+var TORSOB_1115 = 'torsob-2026-11-15';
+var TORSOB_OP = { sacar: [['A', 3], ['B', 3]], tamano: 3, nueva: 'D', descansos: { A: '1:30', D: '1:30' } };
+function torsoBAjustar(c){
+  var op = {}; Object.keys(TORSOB_OP).forEach(function(k){ op[k] = TORSOB_OP[k]; }); op.esCardio = isCardio;
+  var nuevos = window.Ciclo.grupoNuevoAlFinal(c.items || [], op);
+  if (!nuevos) return false;
+  c.items = nuevos; return true;
+}
+function torsoBInicial(){
+  if (S.torsoBVisto || S.restaurando || S.dbState !== 'ok' || !S.loaded.k || !S.loaded.t || !S.defin.d || !S.proto.acquire) return;
+  var c = cicloCfg(); if ((c.ajustes || []).indexOf(TORSOB_1115) >= 0) { S.torsoBVisto = true; return; }
+  S.torsoBVisto = true;
+  var tb = tiposList().find(function(t){ return planTipoDe(t) === 'torsoB'; }); if (!tb) return; /* sin Torso B no hay nada que cambiar */
+  var enTipo = torsoBAjustar(tb), nDias = 0;
+  if (enTipo) markKey('t:' + tb.id);
+  var cm = curMonday();
+  [cm, shiftWeek(cm, 1)].forEach(function(ws){
+    if (weekBlocked(ws) || !S.weeks[ws]) return;
+    S.weeks[ws].days.forEach(function(d, i){
+      if (d.tipo !== tb.id || !hasDayContent(d) || d.rest || diaTerminado(d) || (dayPast(ws, i) && !isToday(ws, i))) return;
+      if (torsoBAjustar(d)) { nDias++; markDirty({ kind: 'day', ws: ws, i: i }); }
+    });
+  });
+  c.ajustes = (c.ajustes || []).concat([TORSOB_1115]); S.cicloDocs.principal = c; markKey('k:principal');
+  if (enTipo || nDias) {
+    var src = enTipo ? tb : null, nombres = [];
+    if (!src) [cm, shiftWeek(cm, 1)].some(function(ws){ return S.weeks[ws] && S.weeks[ws].days.some(function(d){ if (d.tipo === tb.id && d.items.some(function(x){ return x.g === 'D'; })) { src = d; return true; } return false; }); });
+    if (src) nombres = src.items.filter(function(x){ return x.g === 'D' && !isCardio(x); }).map(function(x){ return exById(x.ex).n; });
+    showToast('Torso B quedó en cuatro superseries' + (nombres.length ? ': ' + nombres.join(' y ') + ' pasaron a la D' : '') + '. A y D descansan 1:30' + (nDias ? '; también en ' + nDias + (nDias === 1 ? ' día' : ' días') + ' de estas semanas' : '') + '.');
+  }
+  requestRender();
+}
 /* pone el día tipo de cardio en los días de cardio de esta semana y la siguiente que no tengan nada y no hayan pasado */
 function cardioLlenar(c){
   if (!c.cardio.tipo) return 0;
@@ -3078,7 +3116,7 @@ function autoFill(ws){
   copyFromTipos(src, ws);
   showToast('Semana armada como la del ' + weekLabel(src) + ', con tus días tipo', function(){ clearWeekLocal(ws); });
 }
-function maybeAutoFill(){ cardioInicial(); planInicial(); if (!S.stack.length && S.tab === 'semana') autoFill(S.ws); }
+function maybeAutoFill(){ cardioInicial(); planInicial(); torsoBInicial(); if (!S.stack.length && S.tab === 'semana') autoFill(S.ws); }
 /* vaciar una semana escribe vacío cada día que tenía contenido o documento y marca la semana en blanco (lunes) */
 function clearWeekLocal(ws){ var w = S.weeks[ws]; if (!w) return; for (var i = 0; i < 7; i++) w.days[i] = emptyDay(); w.blank = true; w._local = true; markWeekDays(ws); }
 function saveAsTipo(ctx, name){
