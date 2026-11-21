@@ -347,7 +347,7 @@ function buildOp(key, now){
   if (kind === 't') { var t = S.tipos[id]; return t ? { op: 'set', body: putExtras(serBloques({ name: String(t.name || ''), items: serItems(t.items), ejemplo: !!t.ejemplo, updatedAt: now }, t, false), t._x) } : { op: 'delete', body: null }; }
   if (kind === 'p') { var pe = S.pesos[id]; if (!pe) throw new Error('pesaje ausente'); return { op: 'set', body: { fecha: id, kg: pe.kg, updatedAt: now } }; }
   if (kind === 'm') { var me = S.medidas[id]; if (!me) throw new Error('medidas ausentes'); return { op: 'set', body: { fecha: id, cuello: me.cuello, pecho: me.pecho, cintura: me.cintura, cadera: me.cadera, updatedAt: now } }; }
-  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; if (Array.isArray(nk.correcciones)) bk.correcciones = nk.correcciones.slice(-20); bk.cardio = { tipo: nk.cardio.tipo, dias: nk.cardio.dias }; if (Array.isArray(nk.ajustes)) bk.ajustes = nk.ajustes.slice(-20); return { op: 'set', body: bk }; }
+  if (kind === 'k') { var ck = S.cicloDocs[id]; if (!ck) throw new Error('ciclo ausente'); var nk = window.Ciclo.normalizar(ck); var bk = { orden: nk.orden, dias: nk.dias, equipo: window.Progresion.normalizarEquipo(nk.equipo), updatedAt: now }; bk.descargaCada = nk.descargaCada; bk.factorDescarga = nk.factorDescarga; if (nk.bloque !== undefined) bk.bloque = nk.bloque; if (Array.isArray(nk.correcciones)) bk.correcciones = nk.correcciones.slice(-20); bk.cardio = { tipo: nk.cardio.tipo, dias: nk.cardio.dias }; if (Array.isArray(nk.ajustes)) bk.ajustes = nk.ajustes.slice(-20); if (nk.proyeccion && typeof nk.proyeccion === 'object' && Object.keys(nk.proyeccion).length) bk.proyeccion = nk.proyeccion; return { op: 'set', body: bk }; }
   if (kind === 'f') { var pf = S.perfilDocs[id]; if (!pf) throw new Error('perfil ausente'); return { op: 'set', body: { estatura: pf.estatura, nacimiento: pf.nacimiento || pf._nac0 || '', sexo: pf.sexo === 'M' ? 'M' : 'H', updatedAt: now } }; }
   var c = S.custom[id]; if (!c) throw new Error('ejercicio ausente'); return { op: 'set', body: serCustom(c, now) };
 }
@@ -1009,7 +1009,7 @@ function subscribeCol(db, kind){
       if (kind === 'w') { Object.keys(S.legacyRaw).forEach(function(ws){ if (!S.legacy[ws]) delete S.legacyRaw[ws]; }); if (definitive(snap)) S.defin.w = true; rebuildWeeks(); if (S.defin.w) maybeAutoFill(); }
       if (kind === 'g') onMig(db);
     }
-    S.loaded[kind] = true; checkLoaded(); cardioInicial(); planInicial(); torsoBInicial(); kickQueue(); requestRender();
+    S.loaded[kind] = true; checkLoaded(); cardioInicial(); planInicial(); torsoBInicial(); proyeccionRevisar(); kickQueue(); requestRender();
   }, function(e){ snapErr(col, e); });
 }
 /* el estado de migración decide el modo: mientras no esté completa, las semanas antiguas se leen como fuente de solo
@@ -2211,18 +2211,92 @@ function cardioHecho(d){ return !!d && !d.rest && d.items.some(isCardio) && (d.c
 /* lo que se muestra como "Hecho" y no se toca al reorganizar: un día con series anotadas, o uno solo de cardio marcado
    hecho. Las sesiones del ciclo y la racha de descarga siguen contando solo los días con fuerza (diaHecho) */
 function diaTerminado(d){ return diaHecho(d) || (!!d && !d.rest && d.items.length > 0 && d.items.every(isCardio) && cardioHecho(d)); }
-/* historial de días con su día tipo y si se hicieron, solo de semanas anteriores a la indicada */
-function cicloHistorial(antesDe){
+/* historial de días con su día tipo y si se hicieron, solo de semanas anteriores a la indicada. planeado: día de hoy
+   o futuro con un día tipo y sin hacer todavía; cuenta para proyectar la semana siguiente (21 nov 2026) salvo que se
+   pida solo lo hecho. Un día planeado que pasa sin hacerse deja de contar */
+function diaPendiente(ws, i){ return !dayPast(ws, i) || isToday(ws, i); }
+function cicloHistorial(antesDe, soloHechos){
   var out = [];
-  Object.keys(S.weeks).forEach(function(ws){ if (ws >= antesDe) return; S.weeks[ws].days.forEach(function(d, i){ if (d.tipo || diaHecho(d)) out.push({ fecha: fechaDe(ws, i), tipo: d.tipo || null, hecho: diaHecho(d) }); }); });
+  Object.keys(S.weeks).forEach(function(ws){ if (ws >= antesDe) return; S.weeks[ws].days.forEach(function(d, i){
+    if (!d.tipo && !diaHecho(d)) return;
+    var hecho = diaHecho(d), planeado = !soloHechos && !hecho && !!d.tipo && !d.rest && hasDayContent(d) && diaPendiente(ws, i);
+    out.push({ fecha: fechaDe(ws, i), tipo: d.tipo || null, hecho: hecho, planeado: planeado });
+  }); });
   return out;
 }
-function cicloPartida(ws){ return window.Ciclo.partida(cicloCfg().orden, cicloHistorial(ws)); }
+function cicloPartida(ws, soloHechos){ return window.Ciclo.partida(cicloCfg().orden, cicloHistorial(ws, soloHechos)); }
+/* al reorganizar: lo de antes de la semana (con lo planeado) más lo ya hecho en ella, sin contar lo que se va a rearmar */
+function cicloPartidaReorg(ws){
+  var h = cicloHistorial(ws), w = S.weeks[ws];
+  if (w) w.days.forEach(function(d, i){ if (diaHecho(d)) h.push({ fecha: fechaDe(ws, i), tipo: d.tipo || null, hecho: true }); });
+  return window.Ciclo.partida(cicloCfg().orden, h);
+}
+function cicloDesdeTxt(p){ return (p.desde.planeado ? 'último planeado: ' : 'último hecho: ') + tipoNombre(p.desde.tipo) + ', ' + fechaDiaCorta(p.desde.fecha); }
 function cicloResumen(ws){
   var c = cicloCfg(), p = cicloPartida(ws);
   if (!c.orden.length) return 'Define el orden en Días tipo';
   var arranca = tipoNombre(c.orden[p.idx]);
-  return p.desde ? 'Sigue en ' + arranca + ' (último hecho: ' + tipoNombre(p.desde.tipo) + ', ' + fechaDiaCorta(p.desde.fecha) + ')' : 'Empieza en ' + arranca;
+  return p.desde ? 'Sigue en ' + arranca + ' (' + cicloDesdeTxt(p) + ')' : 'Empieza en ' + arranca;
+}
+/* PROYECCIÓN: la semana armada con una partida que sale de un día planeado queda anotada en el ciclo (proyeccion, por
+   lunes: { idx, tipos }). Si ese día pasa sin hacerse, la partida cambia y la semana se rearma sola con el ciclo desde
+   lo de verdad hecho; si la semana se cambió a mano, no se toca y se olvida la proyección */
+function cicloTiposDe(ws, orden){
+  var out = {}, w = S.weeks[ws]; if (!w) return out;
+  w.days.forEach(function(d, i){ if (d.tipo && !d.rest && orden.indexOf(d.tipo) >= 0 && hasDayContent(d)) out[i] = d.tipo; });
+  return out;
+}
+function proyeccionGuardar(ws, p){
+  var c = cicloCfg(), antes = JSON.stringify(c.proyeccion || {}), m = {}, cm = curMonday();
+  Object.keys(c.proyeccion || {}).forEach(function(k){ if (k >= cm && k !== ws) m[k] = c.proyeccion[k]; });
+  if (p && p.desde && p.desde.planeado) m[ws] = { idx: p.idx, tipos: cicloTiposDe(ws, c.orden) };
+  if (JSON.stringify(m) === antes) return;
+  if (Object.keys(m).length) c.proyeccion = m; else delete c.proyeccion;
+  S.cicloDocs.principal = c; markKey('k:principal');
+}
+/* una vez (21 nov 2026): la semana siguiente que ya estaba armada solo con lo hecho, sin tocar, queda anotada como
+   proyección desde lo hecho; así la revisión de abajo la rearma con lo planeado de esta semana */
+var PROY_1121 = 'proyeccion-2026-11-21';
+function proyeccionInicial(c){
+  if ((c.ajustes || []).indexOf(PROY_1121) >= 0) return false;
+  c.ajustes = (c.ajustes || []).concat([PROY_1121]);
+  var ws = shiftWeek(curMonday(), 1), w = S.weeks[ws];
+  if (!w || weekBlocked(ws) || w.days.some(diaTerminado) || (c.proyeccion && c.proyeccion[ws])) return true;
+  var tipos = cicloTiposDe(ws, c.orden), dias = Object.keys(tipos).map(Number); if (!dias.length) return true;
+  var ph = cicloPartida(ws, true), armado = window.Ciclo.armar(c.orden, ph.idx, dias).dias;
+  if (!armado.every(function(x){ return x.accion !== 'tipo' || tipos[x.i] === x.tipo; })) return true; /* no salió del ciclo así: no se adivina */
+  c.proyeccion = c.proyeccion || {}; c.proyeccion[ws] = { idx: ph.idx, tipos: tipos };
+  return true;
+}
+function proyeccionRevisar(){
+  if (S.restaurando || S.dbState !== 'ok' || !S.loaded.k || !S.loaded.t || !S.defin.d || !S.proto.acquire) return;
+  var c = cicloCfg(); if (c.orden.length < 2) return;
+  var cambio = proyeccionInicial(c), cm = curMonday(), m = c.proyeccion || {}, avisos = [];
+  Object.keys(m).sort().forEach(function(ws){
+    if (ws < cm) { delete m[ws]; cambio = true; return; }
+    if (weekBlocked(ws) || !S.weeks[ws] || !inRangoWeek(ws)) return;
+    var w = S.weeks[ws], p = cicloPartida(ws);
+    var dias = w.days.map(function(d, i){ return { i: i, tipo: d.rest ? null : d.tipo || null, hecho: diaTerminado(d), pasado: !diaPendiente(ws, i), contenido: hasDayContent(d) && !d.rest }; });
+    var est = window.Ciclo.proyeccionEstado(m[ws], p.idx, c.orden, dias);
+    if (est === 'igual') { if (!(p.desde && p.desde.planeado)) { delete m[ws]; cambio = true; } return; }
+    if (est === 'soltar') { delete m[ws]; cambio = true; return; }
+    var sel = Object.keys(m[ws].tipos).map(Number).filter(function(i){ return !dias[i].hecho && !dias[i].pasado; });
+    /* solo se mueven los días del ciclo que faltan: lo demás (cardio, días pasados, descansos) queda como está */
+    var plan = window.Ciclo.reorganizar(c.orden, p.idx, dias, sel);
+    plan.dias = plan.dias.map(function(x){ return x.accion === 'descanso' && sel.indexOf(x.i) < 0 ? { i: x.i, accion: 'mantener' } : x; });
+    S.cicloDocs.principal = c;
+    if (!aplicarPlanCiclo(ws, plan, 'reorg', esDescarga(w))) return;
+    if (p.desde && p.desde.planeado) m[ws] = { idx: p.idx, tipos: cicloTiposDe(ws, c.orden) }; else delete m[ws];
+    cambio = true;
+    var primero = plan.dias.filter(function(x){ return sel.indexOf(x.i) >= 0 && x.tipo; })[0];
+    var arranca = primero ? ': arranca con ' + tipoNombre(primero.tipo) : '';
+    avisos.push(p.desde && p.desde.planeado ? 'La semana del ' + weekLabel(ws) + ' se rearmó con lo planeado' + arranca + ', después de ' + tipoNombre(p.desde.tipo) + ' del ' + fechaDiaCorta(p.desde.fecha) + '. Si ese día no se hace, se recalcula sola.' : 'La semana del ' + weekLabel(ws) + ' se recalculó' + arranca + (p.desde ? ', porque el último día hecho fue ' + tipoNombre(p.desde.tipo) + ' (' + fechaDiaCorta(p.desde.fecha) + ')' : '') + '.');
+  });
+  if (!cambio) return;
+  if (Object.keys(m).length) c.proyeccion = m; else delete c.proyeccion;
+  S.cicloDocs.principal = c; markKey('k:principal');
+  if (avisos.length) showToast(avisos.join(' '));
+  requestRender();
 }
 function fechaDiaCorta(f){ var d = parseIso(f); return DSHORT[wd(f)].toLowerCase() + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
 function cicloElegible(ws, i){ var d = S.weeks[ws] && S.weeks[ws].days[i]; return !(d && diaTerminado(d)) &&!(dayPast(ws, i) && !isToday(ws, i)); }
@@ -2404,10 +2478,10 @@ function cardioLlenar(c){
   return n;
 }
 function vCiclo(t){
-  var c = cicloCfg(), plan = cicloPlan(t), hechos = t.modo === 'reorg' && S.weeks[t.ws] ? S.weeks[t.ws].days.filter(diaHecho).length : 0, nSel = t.dias.length + hechos, p = cicloPartida(t.modo === 'reorg' ? shiftWeek(t.ws, 1) : t.ws);
+  var c = cicloCfg(), plan = cicloPlan(t), hechos = t.modo === 'reorg' && S.weeks[t.ws] ? S.weeks[t.ws].days.filter(diaHecho).length : 0, nSel = t.dias.length + hechos, p = t.modo === 'reorg' ? cicloPartidaReorg(t.ws) : cicloPartida(t.ws);
   var b = '<div><span class="eyebrow">' + esc(weekLabel(t.ws)) + '</span><h2 class="bigtitle">' + (t.modo === 'reorg' ? '¿Cuántos días caben esta semana?' : '¿Cuántos días entrenas esta semana?') + '</h2></div>';
   b += '<div class="seg s4" role="group" aria-label="Sesiones">' + [2, 3, 4, 5].map(function(n){ return '<button type="button" data-a="ciclo-n" data-n="' + n + '" aria-pressed="' + (nSel === n) + '">' + n + ' días</button>'; }).join('') + '</div>';
-  b += '<p class="hint small">' + esc(p.desde ? 'El ciclo sigue en ' + tipoNombre(c.orden[p.idx]) + ': el último día hecho fue ' + tipoNombre(p.desde.tipo) + ' el ' + fechaDiaCorta(p.desde.fecha) + '.' : 'El ciclo empieza en ' + tipoNombre(c.orden[0]) + '.') + ' Toca un día para quitarlo o agregarlo.</p>';
+  b += '<p class="hint small">' + esc(p.desde ? 'El ciclo sigue en ' + tipoNombre(c.orden[p.idx]) + ': ' + (p.desde.planeado ? 'el último planeado es ' + tipoNombre(p.desde.tipo) + ' el ' + fechaDiaCorta(p.desde.fecha) + '; si no se hace, esta semana se recalcula sola.' : 'el último día hecho fue ' + tipoNombre(p.desde.tipo) + ' el ' + fechaDiaCorta(p.desde.fecha) + '.') : 'El ciclo empieza en ' + tipoNombre(c.orden[0]) + '.') + ' Toca un día para quitarlo o agregarlo.</p>';
   b += '<div class="daylist">' + plan.dias.map(function(x){
     var i = x.i, d = S.weeks[t.ws] && S.weeks[t.ws].days[i], eleg = t.modo !== 'reorg' || cicloElegible(t.ws, i), hecho = d && diaTerminado(d);
     var sel = t.dias.indexOf(i) >= 0, numHtml = '<span class="dnum"><small>' + DSHORT[i] + '</small><b>' + dayDate(t.ws, i).getDate() + '</b></span>', txt, pill = '';
@@ -2444,6 +2518,7 @@ function aplicarPlanCiclo(ws, plan, modo, descarga){
 }
 function aplicarCiclo(t){
   if (!aplicarPlanCiclo(t.ws, cicloPlan(t), t.modo, !!t.descarga)) return;
+  proyeccionGuardar(t.ws, cicloPartida(t.ws));
   S.cicloN = t.dias.length; S.ws = t.ws;
   pop();
   showToast(t.descarga ? 'Semana de descarga armada: series reducidas y pesos sin subir.' : t.modo === 'reorg' ? 'Semana reorganizada con el ciclo.' : 'Semana armada con el ciclo. Ajusta cada día si hace falta.');
@@ -2455,7 +2530,8 @@ function autoFillCiclo(src, ws){
   if (!dias.length) return false;
   var p = cicloPartida(ws), plan = planConCardio(ws, window.Ciclo.armar(c.orden, p.idx, dias));
   if (!aplicarPlanCiclo(ws, plan, 'armar')) return false;
-  showToast('Semana armada con el ciclo: sigue en ' + tipoNombre(c.orden[p.idx]) + '. Toca Reorganizar si cambia el número de días.', function(){ clearWeekLocal(ws); });
+  proyeccionGuardar(ws, p);
+  showToast('Semana armada con el ciclo: sigue en ' + tipoNombre(c.orden[p.idx]) + (p.desde && p.desde.planeado ? ', después de ' + tipoNombre(p.desde.tipo) + ' del ' + fechaDiaCorta(p.desde.fecha) + ' (si no se hace, se recalcula)' : '') + '. Toca Reorganizar si cambia el número de días.', function(){ clearWeekLocal(ws); });
   return true;
 }
 function cicloCard(){
@@ -3190,7 +3266,7 @@ function autoFill(ws){
   copyFromTipos(src, ws);
   showToast('Semana armada como la del ' + weekLabel(src) + ', con tus días tipo', function(){ clearWeekLocal(ws); });
 }
-function maybeAutoFill(){ cardioInicial(); planInicial(); torsoBInicial(); if (!S.stack.length && S.tab === 'semana') autoFill(S.ws); }
+function maybeAutoFill(){ cardioInicial(); planInicial(); torsoBInicial(); proyeccionRevisar(); if (!S.stack.length && S.tab === 'semana') autoFill(S.ws); }
 /* vaciar una semana escribe vacío cada día que tenía contenido o documento y marca la semana en blanco (lunes) */
 function clearWeekLocal(ws){ var w = S.weeks[ws]; if (!w) return; for (var i = 0; i < 7; i++) w.days[i] = emptyDay(); w.blank = true; w._local = true; markWeekDays(ws); }
 function saveAsTipo(ctx, name){

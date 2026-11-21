@@ -21,7 +21,7 @@ function normalizar(doc){
     dias[n] = d && d.length === n ? d : DIAS_POR_DEFECTO[n].slice();
   }
   var equipo = o.equipo && typeof o.equipo === 'object' ? JSON.parse(JSON.stringify(o.equipo)) : {};
-  var extra = {}; ['bloque', 'correcciones', 'ajustes'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
+  var extra = {}; ['bloque', 'correcciones', 'ajustes', 'proyeccion'].forEach(function(k){ if (o[k] !== undefined) extra[k] = JSON.parse(JSON.stringify(o[k])); });
   /* cardio aparte: un día tipo (solo cardio) que se carga en ciertos días de descanso al armar la semana */
   var cd = o.cardio && typeof o.cardio === 'object' ? o.cardio : null;
   extra.cardio = { tipo: cd && typeof cd.tipo === 'string' && cd.tipo ? cd.tipo : null, dias: cd && Array.isArray(cd.dias) ? diasValidos(cd.dias) : [2, 5], configurado: !!cd };
@@ -34,15 +34,37 @@ function normalizar(doc){
 function diasPara(cfg, n){ n = Math.min(7, Math.max(1, +n || 0)); return (cfg && cfg.dias && cfg.dias[n] || DIAS_POR_DEFECTO[n]).slice(); }
 
 /* posición de partida: el día tipo del último día hecho que pertenezca al ciclo, mirando hacia atrás en el historial.
-   historial: lista de { fecha, tipo, hecho } en cualquier orden. Devuelve el índice del siguiente paso y de dónde salió */
+   historial: lista de { fecha, tipo, hecho, planeado } en cualquier orden. Devuelve el índice del siguiente paso y de
+   dónde salió. planeado = día de hoy o futuro con ese día tipo y sin hacer todavía (21 nov 2026): la semana siguiente
+   se proyecta con lo que falta de la semana en curso, como si se fuera a hacer; si al final no se hace, el día pasa
+   y deja de contar. desde.planeado dice si la partida sale de un día todavía sin hacer */
 function partida(orden, historial){
   if (!orden.length) return { idx: 0, desde: null };
-  var hechos = (historial || []).filter(function(h){ return h && h.hecho && typeof h.fecha === 'string'; }).sort(function(a, b){ return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; });
+  var hechos = (historial || []).filter(function(h){ return h && (h.hecho || h.planeado) && typeof h.fecha === 'string'; }).sort(function(a, b){ return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; });
   for (var i = 0; i < hechos.length; i++) {
     var p = orden.indexOf(hechos[i].tipo);
-    if (p >= 0) return { idx: (p + 1) % orden.length, desde: { fecha: hechos[i].fecha, tipo: hechos[i].tipo } };
+    if (p < 0) continue;
+    var desde = { fecha: hechos[i].fecha, tipo: hechos[i].tipo };
+    if (!hechos[i].hecho) desde.planeado = true;
+    return { idx: (p + 1) % orden.length, desde: desde };
   }
   return { idx: 0, desde: null };
+}
+
+/* PROYECCIÓN. Una semana armada con una partida que dependía de días planeados se recalcula si esa partida cambia (por
+   ejemplo, el domingo planeado pasó sin hacerse). rec: { idx, tipos: { día: tipo } } guardado al armarla. dias: los
+   siete días de la semana ahora, { i, tipo, hecho, pasado }. Devuelve 'igual' (nada que hacer), 'soltar' (la semana
+   ya no es la que se armó: se cambió a mano, así que no se toca y se olvida la proyección) o 'recalcular' */
+function proyeccionEstado(rec, idxAhora, orden, dias){
+  if (!rec || typeof rec !== 'object' || !rec.tipos) return 'soltar';
+  var porDia = {}; (dias || []).forEach(function(d){ porDia[d.i] = d; });
+  for (var i = 0; i < 7; i++) {
+    var d = porDia[i] || { i: i, tipo: null }, esperado = rec.tipos[i] || null;
+    var delCiclo = d.tipo && orden.indexOf(d.tipo) >= 0 ? d.tipo : null;
+    if (d.hecho) continue;
+    if (delCiclo !== esperado) return 'soltar';
+  }
+  return rec.idx === idxAhora ? 'igual' : 'recalcular';
 }
 
 /* cardio aparte: los días de descanso del plan que caen en los días de cardio reciben el día tipo de cardio.
@@ -146,5 +168,5 @@ function mover(orden, i, dir){
   var t = o[i]; o[i] = o[j]; o[j] = t; return o;
 }
 
-window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, conCardio: conCardio, diasValidos: diasValidos, rachaDescarga: rachaDescarga, descargaRecomendada: descargaRecomendada, seriesDescarga: seriesDescarga, grupoNuevoAlFinal: grupoNuevoAlFinal };
+window.Ciclo = { DIAS_POR_DEFECTO: DIAS_POR_DEFECTO, normalizar: normalizar, diasPara: diasPara, partida: partida, armar: armar, reorganizar: reorganizar, mover: mover, conCardio: conCardio, proyeccionEstado: proyeccionEstado, diasValidos: diasValidos, rachaDescarga: rachaDescarga, descargaRecomendada: descargaRecomendada, seriesDescarga: seriesDescarga, grupoNuevoAlFinal: grupoNuevoAlFinal };
 })();

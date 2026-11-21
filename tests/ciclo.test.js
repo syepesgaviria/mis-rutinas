@@ -34,6 +34,37 @@ prueba('la partida es el siguiente al último día hecho del ciclo, aunque no se
   assert.strictEqual(C.partida(ORDEN, [{ fecha: '2026-11-01', tipo: 'ta', hecho: true }]).idx, 0, 'tras el último del ciclo vuelve al primero');
 });
 
+prueba('la partida cuenta lo planeado pendiente de la semana en curso y lo suelta si pasa sin hacerse', () => {
+  /* sábado 21 nov: lunes a viernes hechos, domingo 22 Pierna A planeada */
+  const h = [
+    { fecha: '2026-11-16', tipo: 'tb', hecho: true },
+    { fecha: '2026-11-18', tipo: 'pb', hecho: true },
+    { fecha: '2026-11-20', tipo: 'ta', hecho: true },
+    { fecha: '2026-11-22', tipo: 'pa', hecho: false, planeado: true }
+  ];
+  const p = C.partida(ORDEN, h);
+  assert.strictEqual(p.idx, 1, 'tras la Pierna A planeada sigue Torso B');
+  assert.deepStrictEqual(p.desde, { fecha: '2026-11-22', tipo: 'pa', planeado: true });
+  /* lunes 23: el domingo pasó sin hacerse, ya no es planeado */
+  const saltado = h.map(x => x.fecha === '2026-11-22' ? { fecha: x.fecha, tipo: 'pa', hecho: false, planeado: false } : x);
+  assert.strictEqual(C.partida(ORDEN, saltado).idx, 0, 'sin la Pierna A del domingo vuelve a Pierna A');
+  assert.strictEqual(C.partida(ORDEN, saltado).desde.planeado, undefined);
+  const hecho = h.map(x => x.fecha === '2026-11-22' ? { fecha: x.fecha, tipo: 'pa', hecho: true } : x);
+  assert.deepStrictEqual(C.partida(ORDEN, hecho).desde, { fecha: '2026-11-22', tipo: 'pa' }, 'hecho no lleva la marca de planeado');
+});
+
+prueba('proyeccionEstado: igual, recalcular o soltar si la semana se cambió a mano', () => {
+  const rec = { idx: 1, tipos: { 0: 'tb', 3: 'pb', 4: 'ta', 6: 'pa' } };
+  const semana = (cambios) => [0, 1, 2, 3, 4, 5, 6].map(i => Object.assign({ i, tipo: rec.tipos[i] || (i === 2 ? 'cardio' : null), hecho: false, pasado: false }, (cambios || {})[i]));
+  assert.strictEqual(C.proyeccionEstado(rec, 1, ORDEN, semana()), 'igual');
+  assert.strictEqual(C.proyeccionEstado(rec, 0, ORDEN, semana()), 'recalcular', 'la partida cambió: se recalcula');
+  assert.strictEqual(C.proyeccionEstado(rec, 0, ORDEN, semana({ 3: { tipo: 'ta' } })), 'soltar', 'un día del ciclo cambiado a mano: no se toca');
+  assert.strictEqual(C.proyeccionEstado(rec, 0, ORDEN, semana({ 1: { tipo: 'pa' } })), 'soltar', 'un día del ciclo agregado a mano: no se toca');
+  assert.strictEqual(C.proyeccionEstado(rec, 0, ORDEN, semana({ 0: { tipo: 'ta', hecho: true } })), 'recalcular', 'lo hecho no cuenta como cambio a mano');
+  assert.strictEqual(C.proyeccionEstado(null, 0, ORDEN, semana()), 'soltar');
+  assert.deepStrictEqual(C.normalizar({ proyeccion: { '2026-11-23': rec } }).proyeccion, { '2026-11-23': rec }, 'normalizar conserva la proyección');
+});
+
 prueba('armar reparte N pasos en los días elegidos y deja el resto en descanso', () => {
   const a = C.armar(ORDEN, 2, [0, 3, 4, 6]);
   assert.deepStrictEqual(a.dias.map(d => d.accion === 'tipo' ? d.tipo : '-'), ['pb', '-', '-', 'ta', 'pa', '-', 'tb']);
