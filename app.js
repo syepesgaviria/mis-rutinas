@@ -1425,32 +1425,30 @@ function barsHtml(dn, st, two){
       '</span><b>' + v + '<small>/' + p + '</small></b></div>';
   }).join('') + '</div>';
 }
-function cardioHtml(dn, st){
-  var rows = st.cardio.map(function(c){
-    var ok = !!dn.cardio[c.i];
-    return '<div class="cardiorow' + (ok ? '' : ' pend') + '"><span class="cl"><span class="cn">' + esc(c.ex.n) + (ok ? '<span class="pill good">Hecho</span>' : '') + '</span><small>' + esc([DAYS[c.i], c.it.km ? c.it.km + ' km' : '', c.it.zona || ''].filter(Boolean).join(' · ')) + '</small></span><b>' + fmtNum(num(c.it.min)) + ' min</b></div>';
-  }).join('');
-  return '<div class="panelhead"><h2>Cardio</h2><b>' + fmtNum(dn.min) + ' de ' + fmtNum(st.min) + ' min</b></div>' +
-    (rows ? rows + '<p class="subnote">El cardio se marca como hecho dentro del día. En los días con series anotadas cuenta solo, salvo que le quites la marca.</p>' : '<p class="subnote">Sin cardio esta semana.</p>');
+function prevLine(dn){ var pw = S.weeks[shiftWeek(S.ws, -1)], pd = pw && hasContent(pw) ? doneStats(pw) : null; return '<p class="subnote">' + (pd ? 'Semana anterior: ' + pd.sets + ' series hechas · ' + fmtVol(pd.vol) + ' kg.' : 'Sin semana anterior.') + volSesionTxt(dn, pd) + '</p>'; }
+/* volumen promedio por sesión (días con series anotadas) y su cambio frente a la semana anterior */
+function volSesionTxt(dn, pd){
+  if (!dn || !dn.days) return '';
+  var actual = dn.vol / dn.days, antes = pd && pd.days ? pd.vol / pd.days : 0, t = '<br>Por sesión: ' + fmtVol(actual) + '&nbsp;kg';
+  if (!antes) return t;
+  var dif = Math.round((actual - antes) / antes * 100);
+  return t + ' (antes ' + fmtVol(antes) + '&nbsp;kg, ' + (dif > 0 ? '+' : dif < 0 ? '−' : '') + Math.abs(dif) + '&nbsp;%)';
 }
-function prevLine(){ var pw = S.weeks[shiftWeek(S.ws, -1)]; if (!pw || !hasContent(pw)) return ''; var pd = doneStats(pw); return '<p class="subnote">Semana anterior: ' + pd.sets + ' series hechas · ' + fmtVol(pd.vol) + ' kg · ' + fmtNum(pd.min) + ' min de cardio.</p>'; }
 function vDeskSummary(st, dn){
-  return '<div class="desksum"><section class="panel span2"><div class="panelhead"><h2>Series por grupo muscular</h2><span>Hechas / plan, por el músculo principal de cada ejercicio</span></div>' + barsHtml(dn, st, true) + '</section><section class="panel">' + cardioHtml(dn, st) + prevLine() + '</section></div>';
+  return '<div class="desksum"><section class="panel span2"><div class="panelhead"><h2>Series por grupo muscular</h2><span>Hechas / plan, por el músculo principal de cada ejercicio</span></div>' + barsHtml(dn, st, true) + '</section><section class="panel"><div class="panelhead"><h2>Volumen</h2><b>' + fmtVol(dn.vol) + ' kg</b></div>' + prevLine(dn) + '</section></div>';
 }
 
 /* RESUMEN (celular): lo hecho en la semana, con el plan como referencia */
 function vResumen(){
   var w = S.weeks[S.ws], st = w ? weekStats(w) : null, dn = w ? doneStats(w) : null, pw = S.weeks[shiftWeek(S.ws, -1)], pd = pw && hasContent(pw) ? doneStats(pw) : null, wk = isoWeek(parseIso(S.ws));
-  function kpi(l, v, sub){ return '<div class="kpi"><span>' + l + '</span><b>' + v + '</b><small>' + sub + '</small></div>'; }
+  function kpi(l, v, sub, cls){ return '<div class="kpi' + (cls ? ' ' + cls : '') + '"><span>' + l + '</span><b>' + v + '</b><small>' + sub + '</small></div>'; }
   var body = '<div><span class="eyebrow">Semana ' + wk.w + '</span><h2 class="bigtitle">' + weekLabel(S.ws) + '</h2></div>';
   if (!st) body += '<p class="hint">Esta semana todavía no tiene plan.</p>';
   else body += '<div class="kpis">' +
       kpi('Días entrenados', dn.days, 'de ' + st.fuerzaDays + (st.fuerzaDays === 1 ? ' planeado' : ' planeados')) +
       kpi('Series hechas', dn.sets, 'de ' + st.sets + ' planeadas') +
-      kpi('Volumen', fmtVol(dn.vol) + '&nbsp;kg', pd ? 'Semana anterior: ' + fmtVol(pd.vol) + '&nbsp;kg' : 'Sin semana anterior') +
-      kpi('Cardio', fmtNum(dn.min) + ' min', 'de ' + fmtNum(st.min) + ' planeados') + '</div>' +
-    '<section class="panel"><div class="panelhead"><h2>Series por grupo muscular</h2><span>hechas / plan</span></div>' + barsHtml(dn, st, false) + '<p class="subnote">Cuenta las series anotadas del músculo principal de cada ejercicio.</p></section>' +
-    '<section class="panel">' + cardioHtml(dn, st) + '</section>';
+      kpi('Volumen', fmtVol(dn.vol) + '&nbsp;kg', (pd ? 'Semana anterior: ' + fmtVol(pd.vol) + '&nbsp;kg' : 'Sin semana anterior') + volSesionTxt(dn, pd), 'ancho') + '</div>' +
+    '<section class="panel"><div class="panelhead"><h2>Series por grupo muscular</h2><span>hechas / plan</span></div>' + barsHtml(dn, st, false) + '<p class="subnote">Cuenta las series anotadas del músculo principal de cada ejercicio.</p></section>';
   return '<section class="view">' + topbar('Semana', 'Resumen') + '<div class="vbody">' + body + '</div></section>';
 }
 
