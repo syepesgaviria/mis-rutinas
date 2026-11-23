@@ -61,10 +61,9 @@ const quieto = p => p.waitForFunction(() => !document.querySelector('.card.loadi
   ok((await dia('2026-11-07')).cardioOk === true, 'la marca queda guardada en el día');
   await page.screenshot({ path: path.join(SALIDA, 'h2-semana.png'), fullPage: true });
 
-  // 3. el resumen lo muestra hecho
-  await page.click('[data-a="open-resumen"]'); await page.waitForSelector('.cardiorow');
-  const fila = page.locator('.cardiorow:has-text("Sábado")');
-  ok(await fila.count() === 1 && await fila.locator('.pill.good').count() === 1 && !(await fila.getAttribute('class')).includes('pend'), 'en el resumen el cardio del sábado sale Hecho');
+  // 3. el resumen ya no muestra cardio (22 nov 2026): ni tarjeta ni panel
+  await page.click('[data-a="open-resumen"]'); await page.waitForSelector('.kpis');
+  ok(await page.locator('.cardiorow').count() === 0 && !(await page.locator('.kpis').innerText()).includes('Cardio'), 'el resumen no muestra cardio');
   await volver();
 
   // 4. reorganizar no toca el día de cardio hecho (antes un día pasado sin series quedaba en descanso)
